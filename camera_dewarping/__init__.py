@@ -1,4 +1,3 @@
-from scipy.spatial import Delaunay
 import numpy as np
 import cv2
 
@@ -15,6 +14,7 @@ VIDEOS = [
 POINTS = {0: [], 1: [], 2: []}
 
 MASKS = {0: [], 1: [], 2: []}
+TRANSFORMS = {0: [], 1: [], 2: []}
 
 LAST_POINTS = {0: 0, 1: 0, 2: 0}
 
@@ -45,36 +45,73 @@ def switch_video(index):
     return cv2.VideoCapture(VIDEOS[index])
 
 
-def triangulate(frame):
+def triangulate(frame, transform=False):
     overlay = np.zeros_like(frame)
+    global TRANSFORMS
+    TRANSFORMS[CURRENT_SOURCE] = []
     if len(POINTS[CURRENT_SOURCE]) > 3:
-        tri = Delaunay(POINTS[CURRENT_SOURCE])
-        for triangle in tri.simplices:
-            pt1 = tuple(POINTS[CURRENT_SOURCE][triangle[0]])
-            pt2 = tuple(POINTS[CURRENT_SOURCE][triangle[1]])
-            pt3 = tuple(POINTS[CURRENT_SOURCE][triangle[2]])
-                
+
+        tri = cv2.Subdiv2D((0, 0, frame.shape[1], frame.shape[0]))
+        # draw triangles
+        for point in POINTS[CURRENT_SOURCE]:
+            tri.insert(point)
+
+        # convert triangles to int
+        triangles = tri.getTriangleList().astype(np.int32)
+
+        # draw delaunay triangles
+        for triangle in triangles:
+            pt1 = tuple(triangle[0:2])
+            pt2 = tuple(triangle[2:4])
+            pt3 = tuple(triangle[4:6])
+
             mask = np.zeros_like(frame)
             # draw triangle and fill it
             cv2.drawContours(mask, [np.array([pt1, pt2, pt3])], 0, (255, 255, 255), -1)
 
-            # crop = mask[
-            #     min(pt1[1], pt2[1], pt3[1]) : max(pt1[1], pt2[1], pt3[1]),
-            #     min(pt1[0], pt2[0], pt3[0]) : max(pt1[0], pt2[0], pt3[0]),
-            # ]
-            MASKS[CURRENT_SOURCE].append(mask)
+            if not transform:
+                MASKS[CURRENT_SOURCE].append(mask)
+            else:
+                edit = np.bitwise_and(frame, mask)
+                edit = bilinear_interpolation(edit, pt1, pt2, pt3)
+                TRANSFORMS[CURRENT_SOURCE].append(edit)
 
             cv2.line(overlay, pt1, pt2, (0, 0, 255), 5)
             cv2.line(overlay, pt2, pt3, (0, 0, 255), 5)
-            cv2.line(overlay, pt3, pt1, (0, 0, 255), 5)    
+            cv2.line(overlay, pt3, pt1, (0, 0, 255), 5)
 
     return overlay
 
-def merge_masks(frame):
+
+def merge_masks(frame, transform=False):
     full = np.zeros_like(frame)
-    for mask in MASKS[CURRENT_SOURCE]:
-        full = cv2.bitwise_or(full, mask)
-    return cv2.bitwise_not(full)
+    if transform:
+        for mask in TRANSFORMS[CURRENT_SOURCE]:
+            full = cv2.bitwise_or(full, mask)
+        return full
+    else:
+        for mask in MASKS[CURRENT_SOURCE]:
+            full = cv2.bitwise_or(full, mask)
+        return full
+
+def get_n_mask(frame, index=0):
+    # get random mask from MASKS
+    if len(MASKS[CURRENT_SOURCE]) == 0:
+        return np.zeros_like(frame)
+    return MASKS[CURRENT_SOURCE][index]
+
+def merge_horizontal(frame1, frame2):
+    return np.hstack((frame1, frame2))
+
+def bilinear_interpolation(frame, pt1, pt2, pt3):
+    pt4 = (pt1[0]+np.random.randint(-100, 100), pt1[1])
+    pt5 = (pt2[0]+np.random.randint(-100, 100), pt2[1])
+    pt6 = (pt3[0]+np.random.randint(-100, 100), pt3[1])
+    src = np.array([pt1, pt2, pt3], dtype=np.float32)
+    dst = np.array([pt4, pt5, pt6], dtype=np.float32)
+    M = cv2.getAffineTransform(src, dst)
+    return cv2.warpAffine(frame, M, (frame.shape[1], frame.shape[0]))
+    
 
 
 def main():
@@ -94,13 +131,28 @@ def main():
         merge = merge_masks(frame)
 
         cv2.setMouseCallback("preview", mouse_callback)
-        
+
         # add overlay and merge to frame
-        overlay = cv2.bitwise_or(overlay, merge)
-        frame = cv2.bitwise_and(frame, overlay)
+        # overlay = cv2.bitwise_or(overlay, merge)
+        # frame = cv2.bitwise_and(frame, overlay)
+        mask = cv2.bitwise_and(frame, merge)
+
+        combined = merge_horizontal(frame, mask)
+
+        triangulate(combined, transform=True)
+
+        merge_transform = merge_masks(combined, transform=True)
+        # mask_transform = cv2.bitwise_and(combined, merge_transform)
+
+        combined = merge_horizontal(combined, merge_transform)
 
 
-        key_pressed = show(frame)
+
+        # combined = merge_horizontal(combined, trans)
+
+
+
+        key_pressed = show(combined)
         global CURRENT_SOURCE
 
         if key_pressed == ord("q"):
@@ -124,7 +176,6 @@ def main():
         # check for enter
         elif key_pressed == ord("\r"):
             break
-    
 
     cap.release()
     cv2.destroyAllWindows()
