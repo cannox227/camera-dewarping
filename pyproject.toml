@@ -19,3 +19,4 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 test = "camera_dewarping.camera:main"
+blend = "camera_dewarping.blend:main"
