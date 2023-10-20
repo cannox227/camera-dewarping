@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="enabledOnReformat" value="true" />
+    <option name="enabledOnSave" value="true" />
+    <option name="executionMode" value="BINARY" />
+    <option name="pathToExecutable" value="/usr/bin/black" />
+    <option name="sdkName" value="Poetry (camera-dewarping)" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="Poetry (camera-dewarping)" project-jdk-type="Python SDK" />
+</project>
