@@ -1,0 +1,12 @@
+{
+    "configurations": [
+    {
+        "name": "camera_dewarping",
+        "type": "python",
+        "request": "launch",
+        "cwd": "${workspaceFolder}",
+        "module": "camera_dewarping",
+        "args": []
+    }
+]
+}

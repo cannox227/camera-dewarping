@@ -1,3 +1,5 @@
+from .camera import main
+main()
 # import numpy as np
 # import cv2
 # import time

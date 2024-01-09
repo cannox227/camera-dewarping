@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import cv2
 import numpy as np
-
+from scipy.spatial import ConvexHull
 
 class KeyCodes:
     NONE = 255
@@ -16,6 +16,9 @@ class KeyCodes:
     CANCEL = ord("c")
     ESC = 27
     ENTER = 13
+    PAUSE = ord(" ")
+    RELEASE = ord("r")
+    POP = ord("p")
 
 
 class Dewarping:
@@ -98,6 +101,20 @@ class Dewarping:
         cv2.imshow("preview", frame_downscaled)
         key_pressed = cv2.waitKey(1)
         return key_pressed & 0xFF
+    
+    def warp_show(self, frame):
+        background = np.zeros_like(frame)
+        if len(self.points[self.current_source]) >= 3:
+            # get convex hull and apply mask (frame = cv2.bitwise_and(frame, background, mask=background))
+            hull = cv2.convexHull(np.array(self.points[self.current_source]))
+            cv2.fillConvexPoly(background, hull, (255, 255, 255))
+            frame = cv2.bitwise_and(frame, background)
+        else:
+            frame = background
+        frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
+        cv2.imshow("warped", frame_downscaled)
+        key_pressed = cv2.waitKey(1)
+        return key_pressed & 0xFF 
 
     def _select_point(self, x, y, warp=False):
         new_point = True
@@ -177,6 +194,7 @@ class Dewarping:
 
 
         for point in self.old_points[self.current_source]:
+            # Colors are in BGRA format
             if warp:
                 if point == self.selected_point:
                     cv2.circle(self.circles, point, 15, (255, 0, 255, 255), -1)
@@ -201,7 +219,7 @@ class Dewarping:
                     cv2.polylines(self.old_lines, [triangle], True, (255, 0, 0, 255), 3)
 
     def get_triangles(self, frame, draw=False) -> None:
-        if len(self.old_points[self.current_source]) > 3:
+        if len(self.old_points[self.current_source]) > 2:
             tri = cv2.Subdiv2D((0, 0, frame.shape[1], frame.shape[0]))
             # draw triangles
             for point in self.old_points[self.current_source]:
@@ -264,9 +282,18 @@ class Dewarping:
         if self.selected_point is not None:
             if key == KeyCodes.CANCEL:
                 self.old_points[self.current_source].remove(self.selected_point)
+                # self.points[self.current_source].remove(self.selected_point)
                 self.selected_point = None
             elif key == KeyCodes.ESC:
                 self.selected_point = None
+        
+        if key == KeyCodes.RELEASE:
+            self.selected_point = None
+        
+        if key == KeyCodes.POP:
+            if len(self.old_points[self.current_source]) > 0:
+                self.old_points[self.current_source].pop()
+
 
         if key == KeyCodes.ENTER:
             self.warping = True
@@ -277,12 +304,17 @@ class Dewarping:
             self.selected_point = None
         return True
 
+    def point_remove_check(self, points):
+        if len(points) > 3:
+            return True
+
     def render(self):
         cv2.namedWindow("preview")
 
+        cv2.namedWindow("warped")
         self.cap = cv2.VideoCapture(self.videos[self.current_source])
         key = KeyCodes.NONE
-
+        
         while self.on_key(key):
             ret, frame = self.cap.read()
             self.background = frame
@@ -295,6 +327,7 @@ class Dewarping:
             frame = self.crop(frame)
             self.get_triangles(frame)
             key = self.show(frame)
+            key = self.warp_show(frame)
 
         self.cap.release()
         cv2.destroyAllWindows()
