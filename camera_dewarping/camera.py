@@ -19,7 +19,12 @@ class KeyCodes:
     PAUSE = ord(" ")
     RELEASE = ord("r")
     POP = ord("p")
+    DBG_WARP_TOGGLE = ord("m")
 
+class State:
+    TRIANGLE_DEFINITION = 0
+    WARPING_FIX_ANCHORS = 1
+    WARPING_APPLY = 2
 
 class Dewarping:
     def __init__(self):
@@ -32,10 +37,13 @@ class Dewarping:
         ]
         self.old_points = {0: [], 1: [], 2: []}
         self.points = {0: [], 1: [], 2: []}
+        self.target_points = {0: [], 1: [], 2: []}
         self.old_triangles = {0: [], 1: [], 2: []}
+        self.target_triangles = {0: [], 1: [], 2: []}
         self.triangles = {0: [], 1: [], 2: []}
         self.cap = None
         self.selected_point = None
+        self.selected_point_warp_index = None
         self.point_threshold = 50
         self.btn_down = False
         self.warping = False
@@ -45,6 +53,11 @@ class Dewarping:
         self.lines = None
         self.old_circles = None
         self.old_lines = None
+        self.state = State.TRIANGLE_DEFINITION 
+        self.next_state = State.TRIANGLE_DEFINITION
+    
+    def update_state(self):
+        self.state = self.next_state
 
     def update_point(self, p, offset_x, offset_y, warp=False):
         points = self.old_points[self.current_source] if not warp else self.points[self.current_source]
@@ -70,8 +83,7 @@ class Dewarping:
                     break
             if index_mask is not None and index_point is not None:
                 triangles[index_mask][index_point] = new_point
-
-        self.selected_point = new_point
+        self.selected_point = new_point        
 
     def _add_layer(self, frame, layer):
         if frame.shape != layer.shape:
@@ -82,62 +94,93 @@ class Dewarping:
         return frame
 
     def show(self, frame):
+
+        if self.warping:
+            self.draw_circles(frame, warp=True)
+            self.draw_lines(frame, warp=self.warping)
+            if self.circles is not None:
+                frame = self._add_layer(frame, self.circles)
+            if self.lines is not None:
+                frame = self._add_layer(frame, self.lines)
+        
+        # Show both old triangle and new triangle (to be warped)
         self.draw_circles(frame, warp=False)
         self.draw_lines(frame, warp=False)
         if self.old_circles is not None:
             frame = self._add_layer(frame, self.old_circles)
         if self.old_lines is not None:
             frame = self._add_layer(frame, self.old_lines)
-
-        if self.warping:
-            self.draw_circles(frame, warp=True)
-            # self.draw_lines(frame, warp=self.warping)
-            if self.circles is not None:
-                frame = self._add_layer(frame, self.circles)
-            # if self.lines is not None:
-                # frame = self._add_layer(frame, self.lines)
+        
+        
         
         frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
         cv2.imshow("preview", frame_downscaled)
-        key_pressed = cv2.waitKey(1)
-        return key_pressed & 0xFF
+        
     
-    def warp_show(self, frame):
+    def pre_warp_show(self, frame):
         background = np.zeros_like(frame)
-        if len(self.points[self.current_source]) >= 3:
-            # get convex hull and apply mask (frame = cv2.bitwise_and(frame, background, mask=background))
-            hull = cv2.convexHull(np.array(self.points[self.current_source]))
-            cv2.fillConvexPoly(background, hull, (255, 255, 255))
-            frame = cv2.bitwise_and(frame, background)
+        if self.state == State.WARPING_FIX_ANCHORS:
+            if len(self.points[self.current_source]) >= 3:
+                # get convex hull and apply mask (frame = cv2.bitwise_and(frame, background, mask=background))
+                # Consider only old points which are the ones fixed before pressing Enter
+                hull = cv2.convexHull(np.array(self.old_points[self.current_source]))
+                cv2.fillConvexPoly(background, hull, (255, 255, 255))
+                frame = cv2.bitwise_and(frame, background)
+            else:
+                frame = background
+        elif self.state == State.WARPING_APPLY:
+            frame = self._apply_warp(frame)
         else:
             frame = background
         frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
-        cv2.imshow("warped", frame_downscaled)
-        key_pressed = cv2.waitKey(1)
-        return key_pressed & 0xFF 
+        cv2.imshow("selected area", frame_downscaled) 
+    
+    def post_warp_show(self, frame):
+        background = np.zeros_like(frame)
+        if len(self.target_points[self.current_source]) >= 3:
+            # get convex hull and apply mask (frame = cv2.bitwise_and(frame, background, mask=background))
+            # Consider only old points which are the ones fixed before pressing Enter
+            # hull = cv2.convexHull(np.array(self.old_points[self.current_source]))
+            # cv2.fillConvexPoly(background, hull, (255, 255, 255))
+            # frame = cv2.bitwise_and(frame, background)
+            pass
+        else:
+            frame = background
+        frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
+        cv2.imshow("post warped", frame_downscaled) 
 
     def _select_point(self, x, y, warp=False):
         new_point = True
         selected_point = None
+        selected_point_index = None
         self.btn_down = True
         points = self.old_points[self.current_source] if not warp else self.points[self.current_source]
 
         # check if x,y is close to any of the points
-        for point in points:
+        for idx, point in enumerate(points):
             if (
                 abs(point[0] - x) < self.point_threshold
                 and abs(point[1] - y) < self.point_threshold
             ):
                 new_point = False
                 selected_point = point
+                selected_point_index = idx
+                print(f"Point selected {(x,y)} found in list wrt to point: {point} at index {selected_point_index}")
                 break
         
-        if new_point:
-            points.append((int(x), int(y)))
-            self.selected_point = points[-1]
-        elif selected_point is not None:
-            self.selected_point = selected_point
+        
+        if warp == False:
+            if new_point:
+                points.append((int(x), int(y)))
+                self.selected_point = points[-1]
+            elif selected_point is not None:
+                self.selected_point = selected_point
 
+        # Warp
+        if warp:
+            if selected_point is not None and new_point == False:
+                self.selected_point = selected_point
+                self.selected_point_warp_index = selected_point_index
 
 
     def on_mouse(self, event, x, y, flags, data):
@@ -193,7 +236,7 @@ class Dewarping:
                 )
 
 
-        for point in self.old_points[self.current_source]:
+        for point in points: #self.old_points[self.current_source]:
             # Colors are in BGRA format
             if warp:
                 if point == self.selected_point:
@@ -212,31 +255,39 @@ class Dewarping:
             self.old_lines = np.zeros(
                 (frame.shape[0], frame.shape[1], 4), dtype=np.uint8
             )
-            for triangle in self.old_triangles[self.current_source]:
+            self.lines = np.zeros(
+                (frame.shape[0], frame.shape[1], 4), dtype=np.uint8
+            )
+            triangles = self.old_triangles[self.current_source] if not warp else self.triangles[self.current_source]
+            for triangle in triangles:#self.old_triangles[self.current_source]:
                 if warp:
-                    cv2.polylines(self.lines, [triangle], True, (255, 255, 0, 255), 3)
+                    cv2.polylines(self.lines, [triangle], True, (130, 130, 130, 255), 3)
                 else:
                     cv2.polylines(self.old_lines, [triangle], True, (255, 0, 0, 255), 3)
 
     def get_triangles(self, frame, draw=False) -> None:
-        if len(self.old_points[self.current_source]) > 2:
+
+        points = self.old_points[self.current_source] if not self.warping else self.points[self.current_source]
+        triangles = self.old_triangles[self.current_source] if not self.warping else self.triangles[self.current_source]
+
+        if len(points) > 2:
             tri = cv2.Subdiv2D((0, 0, frame.shape[1], frame.shape[0]))
             # draw triangles
-            for point in self.old_points[self.current_source]:
+            for point in points:
                 tri.insert(point)
 
             # convert triangles to int
-            triangles = tri.getTriangleList().astype(np.int32)
+            cv2_triangles = tri.getTriangleList().astype(np.int32)
 
-            self.old_triangles[self.current_source] = []
+            triangles.clear()
 
             # draw delaunay triangles
-            for triangle in triangles:
+            for triangle in cv2_triangles:
                 pt1 = tuple(triangle[0:2])
                 pt2 = tuple(triangle[2:4])
                 pt3 = tuple(triangle[4:6])
 
-                self.old_triangles[self.current_source].append(np.array([pt1, pt2, pt3]))
+                triangles.append(np.array([pt1, pt2, pt3]))
 
     def draw_masks(self, frame, index=None) -> np.ndarray:
         image_with_masks = np.zeros_like(frame)
@@ -280,7 +331,7 @@ class Dewarping:
             self.cap = cv2.VideoCapture(self.videos[self.current_source])
 
         if self.selected_point is not None:
-            if key == KeyCodes.CANCEL:
+            if key == KeyCodes.CANCEL and not self.warping:
                 self.old_points[self.current_source].remove(self.selected_point)
                 # self.points[self.current_source].remove(self.selected_point)
                 self.selected_point = None
@@ -289,29 +340,80 @@ class Dewarping:
         
         if key == KeyCodes.RELEASE:
             self.selected_point = None
+            self.selected_point_warp_index = None
         
-        if key == KeyCodes.POP:
+        if key == KeyCodes.POP and not self.warping:
             if len(self.old_points[self.current_source]) > 0:
                 self.old_points[self.current_source].pop()
 
 
         if key == KeyCodes.ENTER:
-            self.warping = True
-            self.circles = deepcopy(self.old_circles)
-            self.lines = deepcopy(self.old_lines)
-            self.points = deepcopy(self.old_points)
-            self.triangles = deepcopy(self.old_triangles)
-            self.selected_point = None
+            #self.warping = True
+            if self.state == State.TRIANGLE_DEFINITION:
+                self.next_state = State.WARPING_FIX_ANCHORS
+                self.circles = deepcopy(self.old_circles)
+                self.lines = deepcopy(self.old_lines)
+                self.points = deepcopy(self.old_points)
+                self.triangles = deepcopy(self.old_triangles) 
+                self.selected_point = None
+                self.warping = True
+                print("Warping anchors set")
+            elif self.state == State.WARPING_FIX_ANCHORS:
+                self.next_state = State.WARPING_APPLY
+                print("Warping applied! ")
+                
+        if key == KeyCodes.DBG_WARP_TOGGLE:
+            self.warping = not self.warping
         return True
 
     def point_remove_check(self, points):
         if len(points) > 3:
             return True
 
+    def _apply_warp(self, frame):
+        # TODO: iterate over all triangles
+        # for triangle in self.triangles[self.current_source]:
+        bg = np.zeros_like(frame)
+        tri1 = np.float32(self.old_triangles[self.current_source])
+        tri2 = np.float32(self.triangles[self.current_source])
+        r1 = cv2.boundingRect(tri1) 
+        r2 = cv2.boundingRect(tri2)
+        mask = np.zeros_like(frame, dtype=np.uint8)
+        tri1Cropped = []
+        tri2Cropped = []
+            
+        for i in range(0, 3):
+            tri1Cropped.append(((tri1[0][i][0] - r1[0]),(tri1[0][i][1] - r1[1])))
+            tri2Cropped.append(((tri2[0][i][0] - r2[0]),(tri2[0][i][1] - r2[1])))
+        
+        # Crop input image
+        img1Cropped = frame[r1[1]:r1[1] + r1[3], r1[0]:r1[0] + r1[2]]
+        warpMat = cv2.getAffineTransform( np.float32(tri1Cropped), np.float32(tri2Cropped) )
+        img2Cropped = cv2.warpAffine(img1Cropped, warpMat, (r2[2], r2[3]), None, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101 )
+        mask = np.zeros((r2[3], r2[2], 3), dtype = np.float32)
+        cv2.fillConvexPoly(mask, np.int32(tri2Cropped), (1.0, 1.0, 1.0), 16, 0);
+        
+        img2Cropped = img2Cropped * mask
+            
+        # Copy triangular region of the rectangular patch to the output image
+        bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] * ( (1.0, 1.0, 1.0) - mask )
+            
+        bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] + img2Cropped
+            
+        
+        return bg
+        # transform_matrix = cv2.getAffineTransform(
+        #     tri1, tri2)
+        #return cv2.warpAffine(frame, transform_matrix, (frame.shape[1], frame.shape[0]))
+        # return cv2.warpAffine(frame, transform_matrix, (frame.shape[1], frame.shape[0]), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101 )
+
     def render(self):
         cv2.namedWindow("preview")
 
-        cv2.namedWindow("warped")
+        
+        cv2.namedWindow("selected area")
+        # cv2.namedWindow("post warped")
+
         self.cap = cv2.VideoCapture(self.videos[self.current_source])
         key = KeyCodes.NONE
         
@@ -326,8 +428,11 @@ class Dewarping:
             cv2.setMouseCallback("preview", self.on_mouse)
             frame = self.crop(frame)
             self.get_triangles(frame)
-            key = self.show(frame)
-            key = self.warp_show(frame)
+            self.show(frame)
+            self.pre_warp_show(frame)
+            # self.post_warp_show(frame)
+            self.update_state()
+            key = cv2.waitKey(1) & 0xFF
 
         self.cap.release()
         cv2.destroyAllWindows()
