@@ -95,13 +95,7 @@ class Dewarping:
 
     def show(self, frame):
 
-        if self.warping:
-            self.draw_circles(frame, warp=True)
-            self.draw_lines(frame, warp=self.warping)
-            if self.circles is not None:
-                frame = self._add_layer(frame, self.circles)
-            if self.lines is not None:
-                frame = self._add_layer(frame, self.lines)
+        
         
         # Show both old triangle and new triangle (to be warped)
         self.draw_circles(frame, warp=False)
@@ -110,7 +104,15 @@ class Dewarping:
             frame = self._add_layer(frame, self.old_circles)
         if self.old_lines is not None:
             frame = self._add_layer(frame, self.old_lines)
-        
+
+        # Show warped triangle 
+        if self.warping:
+            self.draw_circles(frame, warp=True)
+            self.draw_lines(frame, warp=self.warping)
+            if self.circles is not None:
+                frame = self._add_layer(frame, self.circles)
+            if self.lines is not None:
+                frame = self._add_layer(frame, self.lines)
         
         
         frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
