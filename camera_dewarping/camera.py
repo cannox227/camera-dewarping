@@ -93,9 +93,6 @@ class Dewarping:
         return frame
 
     def show(self, frame):
-
-        
-        
         # Show both old triangle and new triangle (to be warped)
         self.draw_circles(frame, warp=False)
         self.draw_lines(frame, warp=False)
@@ -271,24 +268,38 @@ class Dewarping:
         points = self.old_points[self.current_source] if not self.warping else self.points[self.current_source]
         triangles = self.old_triangles[self.current_source] if not self.warping else self.triangles[self.current_source]
 
-        if len(points) > 2:
-            tri = cv2.Subdiv2D((0, 0, frame.shape[1], frame.shape[0]))
-            # draw triangles
-            for point in points:
-                tri.insert(point)
+        if State.TRIANGLE_DEFINITION == self.state:
+            if len(points) > 2:
+                tri = cv2.Subdiv2D((0, 0, frame.shape[1], frame.shape[0]))
+                # draw triangles
+                for point in points:
+                    tri.insert(point)
 
-            # convert triangles to int
-            cv2_triangles = tri.getTriangleList().astype(np.int32)
+                # convert triangles to int
+                cv2_triangles = tri.getTriangleList().astype(np.int32)
 
-            triangles.clear()
+                triangles.clear()
 
-            # draw delaunay triangles
-            for triangle in cv2_triangles:
-                pt1 = tuple(triangle[0:2])
-                pt2 = tuple(triangle[2:4])
-                pt3 = tuple(triangle[4:6])
+                # draw delaunay triangles
+                for triangle in cv2_triangles:
+                    pt1 = tuple(triangle[0:2])
+                    pt2 = tuple(triangle[2:4])
+                    pt3 = tuple(triangle[4:6])
 
-                triangles.append(np.array([pt1, pt2, pt3]))
+                    triangles.append(np.array([pt1, pt2, pt3]))
+        
+        # else:
+
+        #     new_triangles = []
+
+        #     # iterate over all points of a triangle
+        #     for triangle in triangles:
+        #         for point in triangle:
+        #             new_triangles.append(np.array([point for point in points]))
+
+        #     triangles.clear()
+        #     triangles.extend(new_triangles)
+
 
     def draw_masks(self, frame, index=None) -> np.ndarray:
         image_with_masks = np.zeros_like(frame)
@@ -375,32 +386,42 @@ class Dewarping:
         # TODO: iterate over all triangles
         # for triangle in self.triangles[self.current_source]:
         bg = np.zeros_like(frame)
-        tri1 = np.float32(self.old_triangles[self.current_source])
-        tri2 = np.float32(self.triangles[self.current_source])
-        r1 = cv2.boundingRect(tri1) 
-        r2 = cv2.boundingRect(tri2)
-        mask = np.zeros_like(frame, dtype=np.uint8)
-        tri1Cropped = []
-        tri2Cropped = []
+        # tri1 = np.float32(self.old_triangles[self.current_source])
+        # tri2 = np.float32(self.triangles[self.current_source])
+
+        for old_triangles, triangles in zip(self.old_triangles[self.current_source], self.triangles[self.current_source]):
+            tri1 = np.float32(old_triangles)
+            tri2 = np.float32(triangles)
+
+            current_bg = np.zeros_like(frame)
+
+
+            r1 = cv2.boundingRect(tri1) 
+            r2 = cv2.boundingRect(tri2)
+            mask = np.zeros_like(frame, dtype=np.uint8)
+            tri1Cropped = []
+            tri2Cropped = []
+                
+            for i in range(0, 3):
+                tri1Cropped.append(((tri1[i][0] - r1[0]),(tri1[i][1] - r1[1])))
+                tri2Cropped.append(((tri2[i][0] - r2[0]),(tri2[i][1] - r2[1])))
             
-        for i in range(0, 3):
-            tri1Cropped.append(((tri1[0][i][0] - r1[0]),(tri1[0][i][1] - r1[1])))
-            tri2Cropped.append(((tri2[0][i][0] - r2[0]),(tri2[0][i][1] - r2[1])))
-        
-        # Crop input image
-        img1Cropped = frame[r1[1]:r1[1] + r1[3], r1[0]:r1[0] + r1[2]]
-        warpMat = cv2.getAffineTransform( np.float32(tri1Cropped), np.float32(tri2Cropped) )
-        img2Cropped = cv2.warpAffine(img1Cropped, warpMat, (r2[2], r2[3]), None, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101 )
-        mask = np.zeros((r2[3], r2[2], 3), dtype = np.float32)
-        cv2.fillConvexPoly(mask, np.int32(tri2Cropped), (1.0, 1.0, 1.0), 16, 0);
-        
-        img2Cropped = img2Cropped * mask
+            # Crop input image
+            img1Cropped = frame[r1[1]:r1[1] + r1[3], r1[0]:r1[0] + r1[2]]
+            warpMat = cv2.getAffineTransform( np.float32(tri1Cropped), np.float32(tri2Cropped) )
+            img2Cropped = cv2.warpAffine(img1Cropped, warpMat, (r2[2], r2[3]), None, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101 )
+            mask = np.zeros((r2[3], r2[2], 3), dtype = np.float32)
+            cv2.fillConvexPoly(mask, np.int32(tri2Cropped), (1.0, 1.0, 1.0), 16, 0);
             
-        # Copy triangular region of the rectangular patch to the output image
-        bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] * ( (1.0, 1.0, 1.0) - mask )
-            
-        bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] + img2Cropped
-            
+            img2Cropped = img2Cropped * mask
+                
+            # Copy triangular region of the rectangular patch to the output image
+            current_bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] * ( (1.0, 1.0, 1.0) - mask )
+                
+            current_bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] + img2Cropped
+
+            bg = cv2.bitwise_or(bg, current_bg)
+
         
         return bg
         # transform_matrix = cv2.getAffineTransform(
