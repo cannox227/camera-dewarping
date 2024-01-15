@@ -48,10 +48,10 @@ class Dewarping:
         self.warping = False
         self.background = None
         self.overlay = None
-        self.circles = None
-        self.lines = None
-        self.old_circles = None
-        self.old_lines = None
+        self.circles = {0: [], 1: [], 2: []}
+        self.lines = {0: [], 1: [], 2: []}
+        self.old_circles = {0: [], 1: [], 2: []}
+        self.old_lines = {0: [], 1: [], 2: []}
         self.state = State.TRIANGLE_DEFINITION 
         self.next_state = State.TRIANGLE_DEFINITION
     
@@ -96,9 +96,9 @@ class Dewarping:
         # Show both old triangle and new triangle (to be warped)
         self.draw_circles(frame, warp=False)
         self.draw_lines(frame, warp=False)
-        if self.old_circles is not None:
+        if len(self.old_circles[self.current_source]) > 0:
             frame = self._add_layer(frame, self.old_circles)
-        if self.old_lines is not None:
+        if len(self.old_lines[self.current_source]) > 0:
             frame = self._add_layer(frame, self.old_lines)
 
         # Show warped triangle 
@@ -268,7 +268,7 @@ class Dewarping:
         points = self.old_points[self.current_source] if not self.warping else self.points[self.current_source]
         triangles = self.old_triangles[self.current_source] if not self.warping else self.triangles[self.current_source]
 
-        if State.TRIANGLE_DEFINITION == self.state:
+        if State.TRIANGLE_DEFINITION == self.state and not self.warping:
             if len(points) > 2:
                 tri = cv2.Subdiv2D((0, 0, frame.shape[1], frame.shape[0]))
                 # draw triangles
@@ -287,18 +287,12 @@ class Dewarping:
                     pt3 = tuple(triangle[4:6])
 
                     triangles.append(np.array([pt1, pt2, pt3]))
-        
-        # else:
 
-        #     new_triangles = []
-
-        #     # iterate over all points of a triangle
-        #     for triangle in triangles:
-        #         for point in triangle:
-        #             new_triangles.append(np.array([point for point in points]))
-
-        #     triangles.clear()
-        #     triangles.extend(new_triangles)
+        else:
+            if len(points) > 2:
+                triangles.clear()
+                for i in range(0, len(points), 3):
+                    triangles.append(np.array([points[i], points[i+1], points[i+2]]))
 
 
     def draw_masks(self, frame, index=None) -> np.ndarray:
@@ -363,10 +357,10 @@ class Dewarping:
             #self.warping = True
             if self.state == State.TRIANGLE_DEFINITION:
                 self.next_state = State.WARPING_FIX_ANCHORS
-                self.circles = deepcopy(self.old_circles)
-                self.lines = deepcopy(self.old_lines)
-                self.points = deepcopy(self.old_points)
-                self.triangles = deepcopy(self.old_triangles) 
+                self.circles[self.current_source] = deepcopy(self.old_circles[self.current_source])
+                self.lines[self.current_source] = deepcopy(self.old_lines[self.current_source])
+                self.points[self.current_source] = self.multiplicate_points(self.old_triangles[self.current_source])
+                self.triangles[self.current_source] = deepcopy(self.old_triangles[self.current_source]) 
                 self.selected_point = None
                 self.warping = True
                 print("Warping anchors set")
@@ -377,6 +371,13 @@ class Dewarping:
         if key == KeyCodes.DBG_WARP_TOGGLE:
             self.warping = not self.warping
         return True
+    
+    def multiplicate_points(self, old_triangles):
+        new_points = []
+        for triangle in old_triangles:
+            for point in triangle:
+                new_points.append((point[0], point[1]))
+        return new_points
 
     def point_remove_check(self, points):
         if len(points) > 3:
@@ -420,7 +421,7 @@ class Dewarping:
                 
             current_bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] = bg[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]] + img2Cropped
 
-            bg = cv2.bitwise_or(bg, current_bg)
+            bg = cv2.bitwise_xor(bg, current_bg)
 
         
         return bg
