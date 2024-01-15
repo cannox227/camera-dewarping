@@ -2,7 +2,6 @@ from copy import deepcopy
 
 import cv2
 import numpy as np
-from scipy.spatial import ConvexHull
 
 class KeyCodes:
     NONE = 255
