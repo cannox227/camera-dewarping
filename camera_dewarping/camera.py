@@ -47,7 +47,7 @@ class Dewarping:
         self.cap = None
         self.selected_point = None
         self.selected_point_warp_index = None
-        self.point_threshold = 25
+        self.point_threshold = 50
         self.btn_down = False
         self.warping = False
         self.background = None
@@ -131,18 +131,17 @@ class Dewarping:
 
     def pre_warp_show(self, frame):
         background = np.zeros_like(frame)
-        if self.state == State.WARPING_APPLY:
+        if self.state == State.WARPING_FIX_ANCHORS:
             if len(self.points[self.current_source]) >= 3:
                 # get convex hull and apply mask (frame = cv2.bitwise_and(frame, background, mask=background))
                 # Consider only old points which are the ones fixed before pressing Enter
-                hull = cv2.convexHull(np.array(self.points[self.current_source]))
+                hull = cv2.convexHull(np.array(self.old_points[self.current_source]))
                 cv2.fillConvexPoly(background, hull, (255, 255, 255))
                 frame = cv2.bitwise_and(frame, background)
-                frame = self._apply_warp(frame)
             else:
                 frame = background
-            # elif self.state == State.WARPING_APPLY:
-            # frame = self._apply_warp(frame)
+        elif self.state == State.WARPING_APPLY:
+            frame = self._apply_warp(frame)
         else:
             frame = background
         frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
@@ -184,9 +183,9 @@ class Dewarping:
                 new_point = False
                 selected_point = point
                 selected_point_index = idx
-                print(
-                    f"Point selected {(x,y)} found in list wrt to point: {point} at index {selected_point_index}"
-                )
+                # print(
+                #     f"Point selected {(x,y)} found in list wrt to point: {point} at index {selected_point_index}"
+                # )
                 break
 
         if not warp:
@@ -205,10 +204,6 @@ class Dewarping:
     def on_mouse(self, event, x, y, flags, data):
         x = x // self.scale
         y = y // self.scale
-
-        # clip x,y to frame size
-        x = max(0, min(x, self.background.shape[1] - 1))
-        y = max(0, min(y, self.background.shape[0] - 1))
 
         if not self.warping:
             if event == cv2.EVENT_LBUTTONDOWN:
@@ -392,7 +387,7 @@ class Dewarping:
         if key == KeyCodes.ENTER:
             # self.warping = True
             if self.state == State.TRIANGLE_DEFINITION:
-                self.next_state = State.WARPING_APPLY
+                self.next_state = State.WARPING_FIX_ANCHORS
                 self.circles[self.current_source] = deepcopy(
                     self.old_circles[self.current_source]
                 )
@@ -429,13 +424,8 @@ class Dewarping:
 
     def blend(self, frame, bgs):
         new_frame = np.zeros_like(frame)
-        print(len(bgs))
         if len(bgs) > 1:
             for bg1, bg2 in list(combinations(bgs, 2)):
-
-                # bg1 = cv2.GaussianBlur(bg1, (5, 5), 0)
-                # bg2 = cv2.GaussianBlur(bg2, (5, 5), 0)
-
                 image_intersection = cv2.bitwise_and(bg1, bg2)
                 image_mask = np.zeros_like(image_intersection)
                 image_mask[np.where(image_intersection >= 1)] = 255
@@ -455,8 +445,6 @@ class Dewarping:
                 image_final = cv2.addWeighted(image_final, 1, bg1_new, 1, 0)
                 image_final = cv2.addWeighted(image_final, 1, bg2_new, 1, 0)
                 new_frame = image_final
-
-                new_frame = cv2.GaussianBlur(new_frame, (5, 5), 0)
 
         else:
             new_frame = bgs[0]
@@ -533,30 +521,27 @@ class Dewarping:
 
         while self.on_key(key):
             ret, frame = self.cap.read()
+            self.background = frame
             if not ret:
                 # restart video if it ends
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
-            
-            frame = self.crop(frame)
+
             cv2.setMouseCallback("preview", self.on_mouse)
+            frame = self.crop(frame)
             self.get_triangles(frame)
-            if self.state != State.TRIANGLE_DEFINITION:
-                area = self.pre_warp_show(frame)
-                print(self.points)
-                print(self.triangles)
-                # area = self.post_warp_show(frame)
+            area = self.pre_warp_show(frame)
+            # area = self.post_warp_show(frame)
 
-                # create mask from area, where it is 0 set it to 255, else 0
-                mask = np.zeros_like(area)
-                mask[np.where(area == 0)] = 255
-                mask[np.where(area != 0)] = 0
-                # frame = np.hstack([frame, mask, area])
-                # apply mask to frame
-                frame = cv2.bitwise_and(frame, mask)
-                frame = cv2.bitwise_or(frame, area)
+            # create mask from area, where it is 0 set it to 255, else 0
+            mask = np.zeros_like(area)
+            mask[np.where(area == 0)] = 255
+            mask[np.where(area != 0)] = 0
+            # frame = np.hstack([frame, mask, area])
+            # apply mask to frame
+            frame = cv2.bitwise_and(frame, mask)
+            frame = cv2.bitwise_or(frame, area)
 
-            self.background = frame
             self.show(frame)
 
             self.update_state()
