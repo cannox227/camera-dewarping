@@ -10,6 +10,7 @@ packages = [{include = "camera_dewarping"}]
 python = ">=3.10,<3.12"
 opencv-python = "^4.7.0.72"
 numpy = "^1.24.2"
+click = "^8.1.7"
 
 
 [tool.poetry.group.dev.dependencies]

@@ -2,16 +2,21 @@ import cv2
 import sys
 import numpy as np
 
+
 def lookup(image_1, image_1_new, image_2, image_2_new):
     # compute intersection
     image_intersection = cv2.bitwise_and(image_1_new, image_2_new)
 
     # make only intersection black, and rest white
     image_mask = np.zeros_like(image_intersection)
-    image_mask[np.where((image_intersection == [0, 0, 0]).all(axis=2))] = [255, 255, 255]
+    image_mask[np.where((image_intersection == [0, 0, 0]).all(axis=2))] = [
+        255,
+        255,
+        255,
+    ]
 
     image_mask_inv = cv2.bitwise_not(image_mask)
-    
+
     image_1_new = cv2.bitwise_and(image_1_new, image_mask)
     image_2_new = cv2.bitwise_and(image_2_new, image_mask)
 
@@ -22,6 +27,7 @@ def lookup(image_1, image_1_new, image_2, image_2_new):
     print(pixels)
 
     return image
+
 
 def main():
     image_1 = cv2.imread("output/0.jpg")

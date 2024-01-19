@@ -1,14 +1,14 @@
-import numpy as np                                                                                     
-import cv2        
+import numpy as np
+import cv2
+
 
 def overlap(image_1, image_2):
-
     image_intersection = cv2.bitwise_and(image_1, image_2)
     image_mask = np.zeros_like(image_intersection)
     image_mask[np.where(image_intersection >= 1)] = 255
     image_mask_inv = np.ones_like(image_mask) * 255
     image_mask_inv[np.where(image_mask >= 1)] = 0
-    
+
     image_overlap = np.zeros_like(image_1)
     image_overlap = cv2.addWeighted(image_1, 0.5, image_2, 0.5, 0)
 
@@ -23,6 +23,7 @@ def overlap(image_1, image_2):
     image_final = cv2.addWeighted(image_final, 1, image_2_new, 1, 0)
 
     return image_final
+
 
 def main():
     image_1 = cv2.imread("output/0.jpg")

@@ -1,17 +1,19 @@
 from copy import deepcopy
 from itertools import combinations
+import os
 
 import cv2
 import numpy as np
+
+from random import random
+
+import click
 
 
 class KeyCodes:
     NONE = 255
     EXIT = ord("q")
-    LEFT = ord("a")
-    RIGHT = ord("d")
-    UP = ord("w")
-    DOWN = ord("s")
+    SAVE = ord("s")
     PLUS = 43
     MINUS = 45
     CANCEL = ord("c")
@@ -21,12 +23,14 @@ class KeyCodes:
     RELEASE = ord("r")
     POP = ord("p")
     DBG_WARP_TOGGLE = ord("m")
+    LOAD = ord("l")
 
 
 class State:
     TRIANGLE_DEFINITION = 0
     WARPING_FIX_ANCHORS = 1
     WARPING_APPLY = 2
+    LOAD = 3
 
 
 class Dewarping:
@@ -42,7 +46,6 @@ class Dewarping:
         self.points = {0: [], 1: [], 2: []}
         self.target_points = {0: [], 1: [], 2: []}
         self.old_triangles = {0: [], 1: [], 2: []}
-        self.target_triangles = {0: [], 1: [], 2: []}
         self.triangles = {0: [], 1: [], 2: []}
         self.cap = None
         self.selected_point = None
@@ -58,6 +61,8 @@ class Dewarping:
         self.old_lines = {0: [], 1: [], 2: []}
         self.state = State.TRIANGLE_DEFINITION
         self.next_state = State.TRIANGLE_DEFINITION
+        self.transform_matrix = {0: [], 1: [], 2: []}
+        self.first = True
 
     def update_state(self):
         self.state = self.next_state
@@ -110,21 +115,22 @@ class Dewarping:
 
     def show(self, frame):
         # Show both old triangle and new triangle (to be warped)
-        self.draw_circles(frame, warp=False)
-        self.draw_lines(frame, warp=False)
-        if len(self.old_circles[self.current_source]) > 0:
-            frame = self._add_layer(frame, self.old_circles)
-        if len(self.old_lines[self.current_source]) > 0:
-            frame = self._add_layer(frame, self.old_lines)
+        if self.state != State.LOAD: 
+            self.draw_circles(frame, warp=False)
+            self.draw_lines(frame, warp=False)
+            if len(self.old_circles[self.current_source]) > 0:
+                frame = self._add_layer(frame, self.old_circles)
+            if len(self.old_lines[self.current_source]) > 0:
+                frame = self._add_layer(frame, self.old_lines)
 
-        # Show warped triangle
-        if self.warping:
-            self.draw_circles(frame, warp=True)
-            self.draw_lines(frame, warp=self.warping)
-            if len(self.circles[self.current_source]) > 0:
-                frame = self._add_layer(frame, self.circles)
-            if len(self.lines[self.current_source]) > 0:
-                frame = self._add_layer(frame, self.lines)
+            # Show warped triangle
+            if self.warping:
+                self.draw_circles(frame, warp=True)
+                self.draw_lines(frame, warp=self.warping)
+                if len(self.circles[self.current_source]) > 0:
+                    frame = self._add_layer(frame, self.circles)
+                if len(self.lines[self.current_source]) > 0:
+                    frame = self._add_layer(frame, self.lines)
 
         frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
         cv2.imshow("preview", frame_downscaled)
@@ -140,7 +146,7 @@ class Dewarping:
                 frame = cv2.bitwise_and(frame, background)
             else:
                 frame = background
-        elif self.state == State.WARPING_APPLY:
+        elif self.state == State.WARPING_APPLY or self.state == State.LOAD:
             frame = self._apply_warp(frame)
         else:
             frame = background
@@ -405,10 +411,62 @@ class Dewarping:
                 print("Warping anchors set")
             elif self.state == State.WARPING_FIX_ANCHORS:
                 self.next_state = State.WARPING_APPLY
+                self.save()
                 print("Warping applied! ")
 
         if key == KeyCodes.DBG_WARP_TOGGLE:
             self.warping = not self.warping
+
+        if key == KeyCodes.SAVE:
+            self.save()
+
+        if key == KeyCodes.LOAD:
+            if self.load():
+                self.next_state = State.LOAD
+                print("loaded")
+
+        return True
+
+    def save(self):
+        if not os.path.exists("output"):
+            os.makedirs("output")
+        np.save(
+            f"output/old_triangles_{self.current_source}.npy",
+            self.old_triangles[self.current_source],
+        )
+        np.save(
+            f"output/triangles_{self.current_source}.npy",
+            self.triangles[self.current_source],
+        )
+        np.save(
+            f"output/trans_matrix_{self.current_source}.npy",
+            self.transform_matrix[self.current_source],
+        )
+
+    def load(self):
+        if os.path.exists(f"output/old_triangles_{self.current_source}.npy"):
+            self.old_triangles[self.current_source] = np.load(
+                f"output/old_triangles_{self.current_source}.npy"
+            )
+        else:
+            return False
+
+        if os.path.exists(f"output/triangles_{self.current_source}.npy"):
+            self.triangles[self.current_source] = np.load(
+                f"output/triangles_{self.current_source}.npy"
+            )
+        else:
+            return False
+
+        if os.path.exists(f"output/trans_matrix_{self.current_source}.npy"):
+            self.transform_matrix[self.current_source] = np.load(
+                f"output/trans_matrix_{self.current_source}.npy"
+            )
+        else:
+            return False
+
+        self.state = State.LOAD
+        print("loaded")
         return True
 
     def multiplicate_points(self, old_triangles):
@@ -426,7 +484,12 @@ class Dewarping:
         new_frame = np.zeros_like(frame)
         if len(bgs) > 1:
             for bg1, bg2 in list(combinations(bgs, 2)):
+                # check if not intersecting
                 image_intersection = cv2.bitwise_and(bg1, bg2)
+
+                if np.all(image_intersection == 0):
+                    continue
+
                 image_mask = np.zeros_like(image_intersection)
                 image_mask[np.where(image_intersection >= 1)] = 255
                 image_mask_inv = np.ones_like(image_mask) * 255
@@ -434,6 +497,12 @@ class Dewarping:
 
                 image_overlap = np.zeros_like(bg1)
                 image_overlap = cv2.addWeighted(bg1, 0.5, bg2, 0.5, 0)
+                # image_overlap = bg1
+                # image_overlap = bg2
+                # if random() > 0.5:
+                #     image_overlap = bg1
+                # else:
+                #     image_overlap = bg2
 
                 image_common = cv2.bitwise_and(image_overlap, image_mask)
 
@@ -455,10 +524,12 @@ class Dewarping:
         bg = np.zeros_like(frame)
 
         bgs = []
+        if self.state != State.LOAD:
+            self.transform_matrix[self.current_source].clear()
 
-        for old_triangles, triangles in zip(
+        for idx, (old_triangles, triangles) in enumerate(zip(
             self.old_triangles[self.current_source], self.triangles[self.current_source]
-        ):
+        )):
             tri1 = np.float32(old_triangles)
             tri2 = np.float32(triangles)
 
@@ -476,9 +547,14 @@ class Dewarping:
 
             # Crop input image
             img1Cropped = frame[r1[1] : r1[1] + r1[3], r1[0] : r1[0] + r1[2]]
-            warpMat = cv2.getAffineTransform(
-                np.float32(tri1Cropped), np.float32(tri2Cropped)
-            )
+            if self.state == State.LOAD:
+                warpMat = self.transform_matrix[self.current_source][idx]
+            else:
+                warpMat = cv2.getAffineTransform(
+                    np.float32(tri1Cropped), np.float32(tri2Cropped)
+                )
+                self.transform_matrix[self.current_source].append(warpMat)
+            # print(warpMat)
             img2Cropped = cv2.warpAffine(
                 img1Cropped,
                 warpMat,
@@ -502,7 +578,6 @@ class Dewarping:
             )
 
             bgs.append(current_bg)
-
         bg = self.blend(frame, bgs)
         return bg
         # transform_matrix = cv2.getAffineTransform(
@@ -522,9 +597,10 @@ class Dewarping:
         while self.on_key(key):
             ret, frame = self.cap.read()
             self.background = frame
-            if not ret:
+            if not ret or self.first:
                 # restart video if it ends
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 1500)
+                self.first = False
                 continue
 
             cv2.setMouseCallback("preview", self.on_mouse)
@@ -550,7 +626,13 @@ class Dewarping:
         self.cap.release()
         cv2.destroyAllWindows()
 
-
+# @click.command()
+# @click.option("--load", default=False, is_flag=True)
 def main():
     a = Dewarping()
+    # if load:
+    #     a.load()
     a.render()
+
+if __name__ == "__main__":
+    main()
