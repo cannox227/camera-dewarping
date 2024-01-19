@@ -420,7 +420,7 @@ class Dewarping:
         if key == KeyCodes.SAVE:
             self.save()
 
-        if key == KeyCodes.LOAD:
+        if key == KeyCodes.LOAD and self.state != State.LOAD:
             if self.load():
                 self.next_state = State.LOAD
                 print("loaded")
