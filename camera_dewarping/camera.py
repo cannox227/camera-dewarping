@@ -7,8 +7,6 @@ import numpy as np
 
 from random import random
 
-import click
-
 
 class KeyCodes:
     NONE = 255
