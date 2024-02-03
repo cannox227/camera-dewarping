@@ -61,6 +61,7 @@ class Dewarping:
         self.next_state = State.TRIANGLE_DEFINITION
         self.transform_matrix = {0: [], 1: [], 2: []}
         self.first = True
+        self.warped_points = []
 
     def update_state(self):
         self.state = self.next_state
@@ -113,7 +114,7 @@ class Dewarping:
 
     def show(self, frame):
         # Show both old triangle and new triangle (to be warped)
-        if self.state != State.LOAD: 
+        if self.state != State.LOAD:
             self.draw_circles(frame, warp=False)
             self.draw_lines(frame, warp=False)
             if len(self.old_circles[self.current_source]) > 0:
@@ -421,7 +422,6 @@ class Dewarping:
         if key == KeyCodes.LOAD and self.state != State.LOAD:
             if self.load():
                 self.next_state = State.LOAD
-                print("loaded")
 
         return True
 
@@ -440,6 +440,7 @@ class Dewarping:
             f"output/trans_matrix_{self.current_source}.npy",
             self.transform_matrix[self.current_source],
         )
+        print("saved")
 
     def load(self):
         if os.path.exists(f"output/old_triangles_{self.current_source}.npy"):
@@ -478,45 +479,93 @@ class Dewarping:
         if len(points) > 3:
             return True
 
+    def get_triangle_masks(self, bgs):
+        overlaps = []
+        bgx = [(idx, bg) for idx, bg in enumerate(bgs)]
+        masks = {idx: [] for idx, _ in bgx}
+        for (idx1, bg1), (idx2, bg2) in list(combinations(bgx, 2)):
+            # check if not intersecting
+            image_intersection = cv2.bitwise_and(bg1, bg2)
+
+            image_mask = np.zeros_like(image_intersection)
+            image_mask[np.where(image_intersection >= 1)] = 255
+            image_mask_inv = np.ones_like(image_mask) * 255
+            image_mask_inv[np.where(image_mask >= 1)] = 0
+
+            image_overlap = np.zeros_like(bg1)
+            image_overlap = cv2.addWeighted(bg1, 0.5, bg2, 0.5, 0)
+
+            image_common = cv2.bitwise_and(image_overlap, image_mask)
+
+            if np.count_nonzero(image_common) > 15:
+                overlaps.append(image_common)
+
+            masks[idx1].append(image_mask_inv)
+            masks[idx2].append(image_mask_inv)
+
+        return masks, overlaps
+
     def blend(self, frame, bgs):
         new_frame = np.zeros_like(frame)
         if len(bgs) > 1:
-            for bg1, bg2 in list(combinations(bgs, 2)):
-                # check if not intersecting
-                image_intersection = cv2.bitwise_and(bg1, bg2)
+            masks, overlaps = self.get_triangle_masks(bgs)
 
-                if np.all(image_intersection == 0):
-                    continue
+            for idx, mask in masks.items():
+                triangle_crop = bgs[idx]
+                for m in mask:
+                    triangle_crop = cv2.bitwise_and(triangle_crop, m)
 
-                image_mask = np.zeros_like(image_intersection)
-                image_mask[np.where(image_intersection >= 1)] = 255
-                image_mask_inv = np.ones_like(image_mask) * 255
-                image_mask_inv[np.where(image_mask >= 1)] = 0
+                new_frame = cv2.bitwise_or(new_frame, triangle_crop)
 
-                image_overlap = np.zeros_like(bg1)
-                image_overlap = cv2.addWeighted(bg1, 0.5, bg2, 0.5, 0)
-                # image_overlap = bg1
-                # image_overlap = bg2
-                # if random() > 0.5:
-                #     image_overlap = bg1
-                # else:
-                #     image_overlap = bg2
+            # check common area between overlaps
 
-                image_common = cv2.bitwise_and(image_overlap, image_mask)
+            if len(overlaps) == 1:
+                new_frame = cv2.add(new_frame, overlaps[0])
+            else:
+                m, o = self.get_triangle_masks(overlaps)
+                if len(o) == 3:
+                    comp = sorted(overlaps, key=lambda x: np.count_nonzero(x))
+                    over = comp[0]
+                    ms = comp[1:]
 
-                image_final = image_common.copy()
+                    temp = np.zeros_like(frame)
+                    temp = cv2.add(temp, over)
 
-                bg1_new = cv2.bitwise_and(bg1, image_mask_inv)
-                bg2_new = cv2.bitwise_and(bg2, image_mask_inv)
+                    for m1, m2 in combinations(ms, 2):
+                        common = cv2.bitwise_and(m1, m2)
+                        mask = np.zeros_like(common)
+                        mask[np.where(common >= 1)] = 255
+                        mask_inv = np.ones_like(mask) * 255
+                        mask_inv[np.where(mask >= 1)] = 0
+                        m1n = cv2.bitwise_and(m1, mask_inv)
+                        m2n = cv2.bitwise_and(m2, mask_inv)
+                        temp = cv2.add(over, m1n)
+                        temp = cv2.add(temp, m2n)
+                    new_frame = cv2.add(new_frame, temp)
 
-                image_final = cv2.addWeighted(image_final, 1, bg1_new, 1, 0)
-                image_final = cv2.addWeighted(image_final, 1, bg2_new, 1, 0)
-                new_frame = image_final
+                else:
+                    new_frame = cv2.add(new_frame, overlaps[0])
+                    new_frame = cv2.add(new_frame, overlaps[1])
 
+                # masks, overnew = self.get_triangle_masks(overlaps)
+                # for idx, mask in masks.items():
+                #     triangle_crop = overlaps[idx]
+                #     for m in mask:
+                #         triangle_crop = cv2.bitwise_and(triangle_crop, m)
+                #
+                #     new_frame = cv2.bitwise_or(new_frame, triangle_crop)
+                # masks, overnew = self.get_triangle_masks(overnew)
+                # temp = np.zeros_like(frame)
+                # for overlap in overnew:
+                #     temp = cv2.add(temp, overlap)
+                # new_frame = cv2.add(new_frame, temp)
         else:
             new_frame = bgs[0]
 
         return new_frame
+
+    def get_recursive_masks(self, bgs):
+        pass
 
     def _apply_warp(self, frame):
         bg = np.zeros_like(frame)
@@ -525,9 +574,12 @@ class Dewarping:
         if self.state != State.LOAD:
             self.transform_matrix[self.current_source].clear()
 
-        for idx, (old_triangles, triangles) in enumerate(zip(
-            self.old_triangles[self.current_source], self.triangles[self.current_source]
-        )):
+        for idx, (old_triangles, triangles) in enumerate(
+            zip(
+                self.old_triangles[self.current_source],
+                self.triangles[self.current_source],
+            )
+        ):
             tri1 = np.float32(old_triangles)
             tri2 = np.float32(triangles)
 
@@ -585,7 +637,7 @@ class Dewarping:
 
     def render(self):
         cv2.namedWindow("preview")
-
+        cv2.namedWindow("intersection")
         cv2.namedWindow("selected area")
         # cv2.namedWindow("post warped")
 
@@ -624,6 +676,7 @@ class Dewarping:
         self.cap.release()
         cv2.destroyAllWindows()
 
+
 # @click.command()
 # @click.option("--load", default=False, is_flag=True)
 def main():
@@ -631,6 +684,7 @@ def main():
     # if load:
     #     a.load()
     a.render()
+
 
 if __name__ == "__main__":
     main()
