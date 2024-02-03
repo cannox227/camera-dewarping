@@ -1,11 +1,10 @@
+import os
 from copy import deepcopy
 from itertools import combinations
-import os
 
+import click
 import cv2
 import numpy as np
-
-from random import random
 
 
 class KeyCodes:
@@ -32,14 +31,15 @@ class State:
 
 
 class Dewarping:
-    def __init__(self):
+    def __init__(self, file):
         self.current_source = 0
         self.scale = 0.5
-        self.videos = [
-            "assets/left.mp4",
-            "assets/right.mp4",
-            "assets/center.mp4",
-        ]
+        self.videos = [file]
+        # self.videos = [
+        #     "assets/left.mp4",
+        #     "assets/right.mp4",
+        #     "assets/center.mp4",
+        # ]
         self.old_points = {0: [], 1: [], 2: []}
         self.points = {0: [], 1: [], 2: []}
         self.target_points = {0: [], 1: [], 2: []}
@@ -62,6 +62,8 @@ class Dewarping:
         self.transform_matrix = {0: [], 1: [], 2: []}
         self.first = True
         self.warped_points = []
+        # if load:
+        #     self.load()
 
     def update_state(self):
         self.state = self.next_state
@@ -343,35 +345,12 @@ class Dewarping:
 
         return image_with_masks
 
-    def _draw_triangles(self, frame) -> None:
-        # create transparent overlay (4 channels)
-        self.overlay = np.zeros((frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
-        # draw triangles
-        for triangle in self.old_triangles[self.current_source]:
-            cv2.polylines(self.overlay, [triangle], True, (0, 0, 255, 128), 3)
-            # cv2.fillConvexPoly(self.overlay, triangle, (255, 255, 255, 255))
-
-    def warp(self, frame):
-        if self.warped_points == []:
-            self.background = deepcopy(frame)
-            for triangle in self.old_triangles[self.current_source]:
-                pt1, pt2, pt3 = triangle
-                self.warped_points.append(np.array([pt1, pt2, pt3]))
-        #
-        background = deepcopy(self.background)
-        for triangle in self.warped_points:
-            for vertex in triangle:
-                cv2.circle(background, tuple(vertex), 15, (255, 0, 0), -1)
-            cv2.polylines(background, [triangle], True, (255, 255, 255), 3)
-
-        return background
-
     def on_key(self, key):
         if key == KeyCodes.EXIT:
             return False
-        elif ord("1") <= key <= ord("3"):
-            self.current_source = key - ord("1")
-            self.cap = cv2.VideoCapture(self.videos[self.current_source])
+        # elif ord("1") <= key <= ord("3"):
+        #     self.current_source = key - ord("1")
+        #     self.cap = cv2.VideoCapture(self.videos[self.current_source])
 
         if self.selected_point is not None:
             if key == KeyCodes.CANCEL and not self.warping:
@@ -464,8 +443,8 @@ class Dewarping:
         else:
             return False
 
-        self.state = State.LOAD
-        print("loaded")
+        self.next_state = State.LOAD
+        self.update_state()
         return True
 
     def multiplicate_points(self, old_triangles):
@@ -474,10 +453,6 @@ class Dewarping:
             for point in triangle:
                 new_points.append((point[0], point[1]))
         return new_points
-
-    def point_remove_check(self, points):
-        if len(points) > 3:
-            return True
 
     def get_triangle_masks(self, bgs):
         overlaps = []
@@ -630,14 +605,10 @@ class Dewarping:
             bgs.append(current_bg)
         bg = self.blend(frame, bgs)
         return bg
-        # transform_matrix = cv2.getAffineTransform(
-        #     tri1, tri2)
-        # return cv2.warpAffine(frame, transform_matrix, (frame.shape[1], frame.shape[0]))
-        # return cv2.warpAffine(frame, transform_matrix, (frame.shape[1], frame.shape[0]), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101 )
 
     def render(self):
         cv2.namedWindow("preview")
-        cv2.namedWindow("intersection")
+        # cv2.namedWindow("intersection")
         cv2.namedWindow("selected area")
         # cv2.namedWindow("post warped")
 
@@ -677,12 +648,13 @@ class Dewarping:
         cv2.destroyAllWindows()
 
 
-# @click.command()
-# @click.option("--load", default=False, is_flag=True)
-def main():
-    a = Dewarping()
-    # if load:
-    #     a.load()
+@click.command()
+@click.option("--load", default=False, is_flag=True)
+@click.argument("file", type=click.Path(exists=True))
+def main(file, load):
+    a = Dewarping(file)
+    if load:
+        a.load()
     a.render()
 
 
