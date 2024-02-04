@@ -51,8 +51,6 @@ class Dewarping:
         self.point_threshold = 50
         self.btn_down = False
         self.warping = False
-        self.background = None
-        self.overlay = None
         self.circles = {0: [], 1: [], 2: []}
         self.lines = {0: [], 1: [], 2: []}
         self.old_circles = {0: [], 1: [], 2: []}
@@ -60,8 +58,10 @@ class Dewarping:
         self.state = State.TRIANGLE_DEFINITION
         self.next_state = State.TRIANGLE_DEFINITION
         self.transform_matrix = {0: [], 1: [], 2: []}
-        self.first = True
-        self.warped_points = []
+        self.frames = 0
+        self.current_frame = 0
+        self.precision = 255
+        self.wait = self.precision
         # if load:
         #     self.load()
 
@@ -135,6 +135,11 @@ class Dewarping:
 
         frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
         cv2.imshow("preview", frame_downscaled)
+        if self.wait > 0:
+            self.wait -= 1
+        else:
+            cv2.setTrackbarPos("frames", "preview", self.current_frame)
+            self.wait = self.precision
 
     def pre_warp_show(self, frame):
         background = np.zeros_like(frame)
@@ -585,6 +590,9 @@ class Dewarping:
         bg = self.blend(frame, bgs)
         return bg
 
+    def set_frame(self, frame):
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame * self.precision)
+
     def render(self):
         cv2.namedWindow("preview")
         # cv2.namedWindow("intersection")
@@ -592,15 +600,24 @@ class Dewarping:
         # cv2.namedWindow("post warped")
 
         self.cap = cv2.VideoCapture(self.videos[self.current_source])
+        self.frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT) // self.precision)
+        cv2.createTrackbar(
+            "frames",
+            "preview",
+            0,
+            int(self.frames),
+            lambda x: self.set_frame(x),
+        )
+
         key = KeyCodes.NONE
 
         while self.on_key(key):
             ret, frame = self.cap.read()
-            self.background = frame
-            if not ret or self.first:
-                # restart video if it ends
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 1500)
-                self.first = False
+            self.current_frame = int(
+                self.cap.get(cv2.CAP_PROP_POS_FRAMES) // self.precision
+            )
+            if not ret:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
 
             cv2.setMouseCallback("preview", self.on_mouse)
