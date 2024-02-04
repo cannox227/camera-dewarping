@@ -482,9 +482,10 @@ class Dewarping:
 
     def blend(self, frame, bgs):
         new_frame = np.zeros_like(frame)
-        if len(bgs) > 1:
+        if len(bgs) > 1:  # if there are more than 1 background
             masks, overlaps = self.get_triangle_masks(bgs)
 
+            # draw non-overlapping part of the triangles
             for idx, mask in masks.items():
                 triangle_crop = bgs[idx]
                 for m in mask:
@@ -492,48 +493,26 @@ class Dewarping:
 
                 new_frame = cv2.bitwise_or(new_frame, triangle_crop)
 
-            # check common area between overlaps
-
-            if len(overlaps) == 1:
+            if len(overlaps) == 1:  # if there is only 1 overlap, draw it
                 new_frame = cv2.add(new_frame, overlaps[0])
-            else:
-                m, o = self.get_triangle_masks(overlaps)
-                if len(o) == 3:
-                    comp = sorted(overlaps, key=lambda x: np.count_nonzero(x))
-                    over = comp[0]
-                    ms = comp[1:]
+            else:  # else get masks and draw non-overlapping part of the overlaps
+                masks, over = self.get_triangle_masks(overlaps)
+                for idx, mask in masks.items():
+                    triangle_crop = overlaps[idx]
+                    for m in mask:
+                        triangle_crop = cv2.bitwise_and(triangle_crop, m)
 
-                    temp = np.zeros_like(frame)
-                    temp = cv2.add(temp, over)
+                    new_frame = cv2.bitwise_or(new_frame, triangle_crop)
 
-                    for m1, m2 in combinations(ms, 2):
-                        common = cv2.bitwise_and(m1, m2)
-                        mask = np.zeros_like(common)
-                        mask[np.where(common >= 1)] = 255
-                        mask_inv = np.ones_like(mask) * 255
-                        mask_inv[np.where(mask >= 1)] = 0
-                        m1n = cv2.bitwise_and(m1, mask_inv)
-                        m2n = cv2.bitwise_and(m2, mask_inv)
-                        temp = cv2.add(over, m1n)
-                        temp = cv2.add(temp, m2n)
-                    new_frame = cv2.add(new_frame, temp)
+                if 0 < len(over) <= 3:  # take the smallest overlap and draw it
+                    over = min(over, key=lambda x: np.count_nonzero(x))
+                    new_frame = cv2.add(new_frame, over)
+                elif len(over) > 3:  # otherwise blend all overlaps
+                    background = np.zeros_like(frame)
+                    for o in over:
+                        background = cv2.add(background, o)
+                    new_frame = cv2.add(new_frame, background)
 
-                else:
-                    new_frame = cv2.add(new_frame, overlaps[0])
-                    new_frame = cv2.add(new_frame, overlaps[1])
-
-                # masks, overnew = self.get_triangle_masks(overlaps)
-                # for idx, mask in masks.items():
-                #     triangle_crop = overlaps[idx]
-                #     for m in mask:
-                #         triangle_crop = cv2.bitwise_and(triangle_crop, m)
-                #
-                #     new_frame = cv2.bitwise_or(new_frame, triangle_crop)
-                # masks, overnew = self.get_triangle_masks(overnew)
-                # temp = np.zeros_like(frame)
-                # for overlap in overnew:
-                #     temp = cv2.add(temp, overlap)
-                # new_frame = cv2.add(new_frame, temp)
         else:
             new_frame = bgs[0]
 
