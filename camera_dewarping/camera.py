@@ -21,6 +21,7 @@ class KeyCodes:
     POP = ord("p")
     DBG_WARP_TOGGLE = ord("m")
     LOAD = ord("l")
+    VISIBILITY = ord("v")
 
 
 class State:
@@ -47,7 +48,6 @@ class Dewarping:
         self.triangles = {0: [], 1: [], 2: []}
         self.cap = None
         self.selected_point = None
-        self.selected_point_warp_index = None
         self.point_threshold = 50
         self.btn_down = False
         self.warping = False
@@ -81,25 +81,15 @@ class Dewarping:
         )
         new_point = (p[0] + offset_x, p[1] + offset_y)
 
-        index = None
-        for i, point in enumerate(points):
-            if point == p:
-                index = i
-                break
+        index = points.index(p) if p in points else None
 
         if index is not None:
             points[index] = new_point
 
-        index_mask = None
-        for i, mask in enumerate(triangles):
-            index_point = None
-            for j, point in enumerate(mask):
+        for mask in triangles:
+            for i, point in enumerate(mask):
                 if point[0] == p[0] and point[1] == p[1]:
-                    index_mask = i
-                    index_point = j
-                    break
-            if index_mask is not None and index_point is not None:
-                triangles[index_mask][index_point] = new_point
+                    mask[i] = new_point
         self.selected_point = new_point
 
     def _add_layer(self, frame, layer):
@@ -194,10 +184,6 @@ class Dewarping:
             ):
                 new_point = False
                 selected_point = point
-                selected_point_index = idx
-                # print(
-                #     f"Point selected {(x,y)} found in list wrt to point: {point} at index {selected_point_index}"
-                # )
                 break
 
         if not warp:
@@ -209,9 +195,8 @@ class Dewarping:
 
         # Warp
         if warp:
-            if selected_point is not None and new_point == False:
+            if selected_point is not None and new_point is False:
                 self.selected_point = selected_point
-                self.selected_point_warp_index = selected_point_index
 
     def on_mouse(self, event, x, y, flags, data):
         x = x // self.scale
@@ -299,7 +284,7 @@ class Dewarping:
                 else:
                     cv2.polylines(self.old_lines, [triangle], True, (255, 0, 0, 255), 3)
 
-    def get_triangles(self, frame, draw=False) -> None:
+    def get_triangles(self, frame) -> None:
         points = (
             self.old_points[self.current_source]
             if not self.warping
@@ -367,7 +352,6 @@ class Dewarping:
 
         if key == KeyCodes.RELEASE:
             self.selected_point = None
-            self.selected_point_warp_index = None
 
         if key == KeyCodes.POP and not self.warping:
             if len(self.old_points[self.current_source]) > 0:
