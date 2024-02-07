@@ -33,31 +33,30 @@ class State:
 
 class Dewarping:
     def __init__(self, file):
-        self.current_source = 0
         self.scale = 0.5
-        self.videos = [file]
+        self.video = file
         # self.videos = [
         #     "assets/left.mp4",
         #     "assets/right.mp4",
         #     "assets/center.mp4",
         # ]
-        self.old_points = {0: [], 1: [], 2: []}
-        self.points = {0: [], 1: [], 2: []}
-        self.target_points = {0: [], 1: [], 2: []}
-        self.old_triangles = {0: [], 1: [], 2: []}
-        self.triangles = {0: [], 1: [], 2: []}
+        self.old_points = []
+        self.points = []
+        self.target_points = []
+        self.old_triangles = []
+        self.triangles = []
         self.cap = None
         self.selected_point = None
         self.point_threshold = 50
         self.btn_down = False
         self.warping = False
-        self.circles = {0: [], 1: [], 2: []}
-        self.lines = {0: [], 1: [], 2: []}
-        self.old_circles = {0: [], 1: [], 2: []}
-        self.old_lines = {0: [], 1: [], 2: []}
+        self.circles = []
+        self.lines = []
+        self.old_circles = []
+        self.old_lines = []
         self.state = State.TRIANGLE_DEFINITION
         self.next_state = State.TRIANGLE_DEFINITION
-        self.transform_matrix = {0: [], 1: [], 2: []}
+        self.transform_matrix = []
         self.frames = 0
         self.current_frame = 0
         self.precision = 255
@@ -70,14 +69,14 @@ class Dewarping:
 
     def update_point(self, p, offset_x, offset_y, warp=False):
         points = (
-            self.old_points[self.current_source]
+            self.old_points
             if not warp
-            else self.points[self.current_source]
+            else self.points
         )
         triangles = (
-            self.old_triangles[self.current_source]
+            self.old_triangles
             if not warp
-            else self.triangles[self.current_source]
+            else self.triangles
         )
         new_point = (p[0] + offset_x, p[1] + offset_y)
 
@@ -109,18 +108,18 @@ class Dewarping:
         if self.state != State.LOAD:
             self.draw_circles(frame, warp=False)
             self.draw_lines(frame, warp=False)
-            if len(self.old_circles[self.current_source]) > 0:
+            if len(self.old_circles) > 0:
                 frame = self._add_layer(frame, self.old_circles)
-            if len(self.old_lines[self.current_source]) > 0:
+            if len(self.old_lines) > 0:
                 frame = self._add_layer(frame, self.old_lines)
 
             # Show warped triangle
             if self.warping:
                 self.draw_circles(frame, warp=True)
                 self.draw_lines(frame, warp=self.warping)
-                if len(self.circles[self.current_source]) > 0:
+                if len(self.circles) > 0:
                     frame = self._add_layer(frame, self.circles)
-                if len(self.lines[self.current_source]) > 0:
+                if len(self.lines) > 0:
                     frame = self._add_layer(frame, self.lines)
 
         frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
@@ -134,10 +133,10 @@ class Dewarping:
     def pre_warp_show(self, frame):
         background = np.zeros_like(frame)
         if self.state == State.WARPING_FIX_ANCHORS:
-            if len(self.points[self.current_source]) >= 3:
+            if len(self.points) >= 3:
                 # get convex hull and apply mask (frame = cv2.bitwise_and(frame, background, mask=background))
                 # Consider only old points which are the ones fixed before pressing Enter
-                hull = cv2.convexHull(np.array(self.old_points[self.current_source]))
+                hull = cv2.convexHull(np.array(self.old_points))
                 cv2.fillConvexPoly(background, hull, (255, 255, 255))
                 frame = cv2.bitwise_and(frame, background)
             else:
@@ -152,10 +151,10 @@ class Dewarping:
 
     def post_warp_show(self, frame):
         background = np.zeros_like(frame)
-        if len(self.target_points[self.current_source]) >= 3:
+        if len(self.target_points) >= 3:
             # get convex hull and apply mask (frame = cv2.bitwise_and(frame, background, mask=background))
             # Consider only old points which are the ones fixed before pressing Enter
-            # hull = cv2.convexHull(np.array(self.old_points[self.current_source]))
+            # hull = cv2.convexHull(np.array(self.old_points))
             # cv2.fillConvexPoly(background, hull, (255, 255, 255))
             # frame = cv2.bitwise_and(frame, background)
             pass
@@ -171,9 +170,9 @@ class Dewarping:
         selected_point_index = None
         self.btn_down = True
         points = (
-            self.old_points[self.current_source]
+            self.old_points
             if not warp
-            else self.points[self.current_source]
+            else self.points
         )
 
         # check if x,y is close to any of the points
@@ -228,19 +227,14 @@ class Dewarping:
                 self.btn_down = False
 
     def crop(self, frame):
-        match self.current_source:
-            case 0:
-                return frame[:, 1400:2600]
-            case 1:
-                return frame[:, 1450:2550]
-            case 2:
-                return frame[:, 1400:2700]
+        return frame[:, 1400:2600]
+
 
     def draw_circles(self, frame, warp=False):
         points = (
-            self.old_points[self.current_source]
+            self.old_points
             if not warp
-            else self.points[self.current_source]
+            else self.points
         )
 
         if points != []:
@@ -253,7 +247,7 @@ class Dewarping:
                     (frame.shape[0], frame.shape[1], 4), dtype=np.uint8
                 )
 
-        for point in points:  # self.old_points[self.current_source]:
+        for point in points:  # self.old_points:
             # Colors are in BGRA format
             if warp:
                 if point == self.selected_point:
@@ -274,11 +268,11 @@ class Dewarping:
             )
             self.lines = np.zeros((frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
             triangles = (
-                self.old_triangles[self.current_source]
+                self.old_triangles
                 if not warp
-                else self.triangles[self.current_source]
+                else self.triangles
             )
-            for triangle in triangles:  # self.old_triangles[self.current_source]:
+            for triangle in triangles:  # self.old_triangles:
                 if warp:
                     cv2.polylines(self.lines, [triangle], True, (130, 130, 130, 255), 3)
                 else:
@@ -286,14 +280,14 @@ class Dewarping:
 
     def get_triangles(self, frame) -> None:
         points = (
-            self.old_points[self.current_source]
+            self.old_points
             if not self.warping
-            else self.points[self.current_source]
+            else self.points
         )
         triangles = (
-            self.old_triangles[self.current_source]
+            self.old_triangles
             if not self.warping
-            else self.triangles[self.current_source]
+            else self.triangles
         )
 
         if State.TRIANGLE_DEFINITION == self.state and not self.warping:
@@ -326,7 +320,7 @@ class Dewarping:
 
     def draw_masks(self, frame, index=None) -> np.ndarray:
         image_with_masks = np.zeros_like(frame)
-        for i, mask in enumerate(self.old_triangles[self.current_source]):
+        for i, mask in enumerate(self.old_triangles):
             if index is not None and i != index:
                 continue
             overlay = cv2.fillConvexPoly(np.zeros_like(frame), mask, (255, 255, 255))
@@ -340,12 +334,12 @@ class Dewarping:
             return False
         # elif ord("1") <= key <= ord("3"):
         #     self.current_source = key - ord("1")
-        #     self.cap = cv2.VideoCapture(self.videos[self.current_source])
+        #     self.cap = cv2.VideoCapture(self.videos)
 
         if self.selected_point is not None:
             if key == KeyCodes.CANCEL and not self.warping:
-                self.old_points[self.current_source].remove(self.selected_point)
-                # self.points[self.current_source].remove(self.selected_point)
+                self.old_points.remove(self.selected_point)
+                # self.points.remove(self.selected_point)
                 self.selected_point = None
             elif key == KeyCodes.ESC:
                 self.selected_point = None
@@ -354,24 +348,24 @@ class Dewarping:
             self.selected_point = None
 
         if key == KeyCodes.POP and not self.warping:
-            if len(self.old_points[self.current_source]) > 0:
-                self.old_points[self.current_source].pop()
+            if len(self.old_points) > 0:
+                self.old_points.pop()
 
         if key == KeyCodes.ENTER:
             # self.warping = True
             if self.state == State.TRIANGLE_DEFINITION:
                 self.next_state = State.WARPING_FIX_ANCHORS
-                self.circles[self.current_source] = deepcopy(
-                    self.old_circles[self.current_source]
+                self.circles = deepcopy(
+                    self.old_circles
                 )
-                self.lines[self.current_source] = deepcopy(
-                    self.old_lines[self.current_source]
+                self.lines = deepcopy(
+                    self.old_lines
                 )
-                self.points[self.current_source] = self.multiplicate_points(
-                    self.old_triangles[self.current_source]
+                self.points = self.multiplicate_points(
+                    self.old_triangles
                 )
-                self.triangles[self.current_source] = deepcopy(
-                    self.old_triangles[self.current_source]
+                self.triangles = deepcopy(
+                    self.old_triangles
                 )
                 self.selected_point = None
                 self.warping = True
@@ -396,38 +390,45 @@ class Dewarping:
     def save(self):
         if not os.path.exists("output"):
             os.makedirs("output")
+        
+        # escape slashes in path
+        name = self.video.replace("/", ".")
+        
         np.save(
-            f"output/old_triangles_{self.current_source}.npy",
-            self.old_triangles[self.current_source],
+            f"output/old_triangles_{name}.npy",
+            self.old_triangles,
         )
         np.save(
-            f"output/triangles_{self.current_source}.npy",
-            self.triangles[self.current_source],
+            f"output/triangles_{name}.npy",
+            self.triangles,
         )
         np.save(
-            f"output/trans_matrix_{self.current_source}.npy",
-            self.transform_matrix[self.current_source],
+            f"output/trans_matrix_{name}.npy",
+            self.transform_matrix,
         )
         print("saved")
 
     def load(self):
-        if os.path.exists(f"output/old_triangles_{self.current_source}.npy"):
-            self.old_triangles[self.current_source] = np.load(
-                f"output/old_triangles_{self.current_source}.npy"
+        name = self.video.replace("/", ".")
+        if os.path.exists(f"output/old_triangles_{name}.npy"):
+            self.old_triangles = np.load(
+
+                f"output/old_triangles_{name}.npy"
             )
         else:
             return False
 
-        if os.path.exists(f"output/triangles_{self.current_source}.npy"):
-            self.triangles[self.current_source] = np.load(
-                f"output/triangles_{self.current_source}.npy"
+
+        if os.path.exists(f"output/triangles_{name}.npy"):
+            self.triangles = np.load(
+                f"output/triangles_{name}.npy"
             )
         else:
             return False
 
-        if os.path.exists(f"output/trans_matrix_{self.current_source}.npy"):
-            self.transform_matrix[self.current_source] = np.load(
-                f"output/trans_matrix_{self.current_source}.npy"
+        if os.path.exists(f"output/trans_matrix_{name}.npy"):
+            self.transform_matrix = np.load(
+                f"output/trans_matrix_{name}.npy"
             )
         else:
             return False
@@ -515,12 +516,12 @@ class Dewarping:
 
         bgs = []
         if self.state != State.LOAD:
-            self.transform_matrix[self.current_source].clear()
+            self.transform_matrix.clear()
 
         for idx, (old_triangles, triangles) in enumerate(
             zip(
-                self.old_triangles[self.current_source],
-                self.triangles[self.current_source],
+                self.old_triangles,
+                self.triangles,
             )
         ):
             tri1 = np.float32(old_triangles)
@@ -541,12 +542,12 @@ class Dewarping:
             # Crop input image
             img1Cropped = frame[r1[1] : r1[1] + r1[3], r1[0] : r1[0] + r1[2]]
             if self.state == State.LOAD:
-                warpMat = self.transform_matrix[self.current_source][idx]
+                warpMat = self.transform_matrix[idx]
             else:
                 warpMat = cv2.getAffineTransform(
                     np.float32(tri1Cropped), np.float32(tri2Cropped)
                 )
-                self.transform_matrix[self.current_source].append(warpMat)
+                self.transform_matrix.append(warpMat)
             # print(warpMat)
             img2Cropped = cv2.warpAffine(
                 img1Cropped,
@@ -583,7 +584,7 @@ class Dewarping:
         cv2.namedWindow("selected area")
         # cv2.namedWindow("post warped")
 
-        self.cap = cv2.VideoCapture(self.videos[self.current_source])
+        self.cap = cv2.VideoCapture(self.video)
         self.frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT) // self.precision)
         cv2.createTrackbar(
             "frames",
