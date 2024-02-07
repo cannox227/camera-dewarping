@@ -34,7 +34,7 @@ class State:
 
 
 class Dewarping:
-    def __init__(self, file):
+    def __init__(self, file, load):
         self.scale = 0.5
         self.video = file
         self.old_points = [[]]
@@ -61,8 +61,9 @@ class Dewarping:
         self.group = 0
         self.draw = True
         self.visibility = True
-        # if load:
-        #     self.load()
+        if load:
+            if not self.load():
+                print("No saved data found, skipping")
 
     def update_state(self):
         self.state = self.next_state
@@ -343,7 +344,7 @@ class Dewarping:
                 print("Warping anchors set")
             elif self.state == State.WARPING_FIX_ANCHORS:
                 self.next_state = State.WARPING_APPLY
-                print("Warping applied! ")
+                print("Warping applied!")
 
         if key == KeyCodes.DBG_WARP_TOGGLE:
             self.warping = not self.warping
@@ -354,6 +355,8 @@ class Dewarping:
         if key == KeyCodes.LOAD and self.state != State.LOAD:
             if self.load():
                 self.next_state = State.LOAD
+            else:
+                print("No saved data found, skipping")
 
         if key == KeyCodes.GROUP:
             self.group += 1
@@ -403,7 +406,7 @@ class Dewarping:
                 f"output/{name}/trans_matrix_{idx}.npy",
                 self.transform_matrix[idx],
             )
-        print("saved")
+        print("Saved!")
 
     def load(self):
         name = self.video.split(".")[0]
@@ -434,6 +437,9 @@ class Dewarping:
 
         self.next_state = State.LOAD
         self.update_state()
+
+        print("Loaded!")
+
         return True
 
     def multiplicate_points(self, old_triangles):
@@ -544,7 +550,7 @@ class Dewarping:
                         np.float32(tri1Cropped), np.float32(tri2Cropped)
                     )
                     self.transform_matrix[idx].append(warpMat)
-                # print(warpMat)
+
                 img2Cropped = cv2.warpAffine(
                     img1Cropped,
                     warpMat,
@@ -623,12 +629,20 @@ class Dewarping:
 
 
 @click.command()
-@click.option("--load", default=False, is_flag=True)
+@click.option(
+    "--load",
+    default=False,
+    is_flag=True,
+    help="Load presaved config (from output folder)",
+)
 @click.argument("file", type=click.Path(exists=True))
 def main(file, load):
-    a = Dewarping(file)
-    if load:
-        a.load()
+    """
+    Dewarping tool for cameras
+    Press 'q' to exit
+    Press 's' to save
+    """
+    a = Dewarping(file, load)
     a.render()
 
 
