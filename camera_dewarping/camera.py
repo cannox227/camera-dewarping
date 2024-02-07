@@ -34,8 +34,8 @@ class State:
 
 
 class Dewarping:
-    def __init__(self, file, load):
-        self.scale = 0.5
+    def __init__(self, file, load, scale):
+        self.scale = scale
         self.video = file
         self.old_points = [[]]
         self.points = [[]]
@@ -214,9 +214,6 @@ class Dewarping:
 
             elif event == cv2.EVENT_LBUTTONUP and self.btn_down:
                 self.btn_down = False
-
-    def crop(self, frame):
-        return frame[:, 1400:2600]
 
     def draw_circles(self, frame, warp=False):
         for idx in range(self.group + 1):
@@ -606,7 +603,6 @@ class Dewarping:
                 continue
 
             cv2.setMouseCallback("Camera Dewarping", self.on_mouse)
-            frame = self.crop(frame)
             self.get_triangles(frame)
             area = self.pre_warp_show(frame)
 
@@ -635,14 +631,15 @@ class Dewarping:
     is_flag=True,
     help="Load presaved config (from output folder)",
 )
+@click.option("--scale", default=0.5, help="Window scale wrt. to video size")
 @click.argument("file", type=click.Path(exists=True))
-def main(file, load):
+def main(file, load, scale):
     """
     Dewarping tool for cameras
     Press 'q' to exit
     Press 's' to save
     """
-    a = Dewarping(file, load)
+    a = Dewarping(file, load, scale)
     a.render()
 
 
