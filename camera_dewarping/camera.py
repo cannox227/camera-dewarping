@@ -23,6 +23,7 @@ class KeyCodes:
     LOAD = ord("l")
     VISIBILITY = ord("v")
     GROUP = ord("g")
+    DRAW = ord("d")
 
 
 class State:
@@ -58,6 +59,8 @@ class Dewarping:
         self.precision = 255
         self.wait = self.precision
         self.group = 0
+        self.draw = True
+        self.visibility = True
         # if load:
         #     self.load()
 
@@ -97,28 +100,29 @@ class Dewarping:
         # Show both old triangle and new triangle (to be warped)
         if self.state != State.LOAD:
             for idx in range(self.group + 1):
-                self.draw_circles(frame, warp=False)
-                self.draw_lines(frame, warp=False)
-                if len(self.old_circles[idx]) > 0:
-                    frame = self._add_layer(frame, self.old_circles[idx])
-                if len(self.old_lines[idx]) > 0:
-                    frame = self._add_layer(frame, self.old_lines[idx])
+                if self.draw:
+                    self.draw_circles(frame, warp=False)
+                    self.draw_lines(frame, warp=False)
+                    if len(self.old_circles[idx]) > 0:
+                        frame = self._add_layer(frame, self.old_circles[idx])
+                    if len(self.old_lines[idx]) > 0:
+                        frame = self._add_layer(frame, self.old_lines[idx])
 
-                # Show warped triangle
-                if self.warping:
-                    self.draw_circles(frame, warp=True)
-                    self.draw_lines(frame, warp=self.warping)
-                    if len(self.circles[idx]) > 0:
-                        frame = self._add_layer(frame, self.circles[idx])
-                    if len(self.lines[idx]) > 0:
-                        frame = self._add_layer(frame, self.lines[idx])
+                    # Show warped triangle
+                    if self.warping:
+                        self.draw_circles(frame, warp=True)
+                        self.draw_lines(frame, warp=self.warping)
+                        if len(self.circles[idx]) > 0:
+                            frame = self._add_layer(frame, self.circles[idx])
+                        if len(self.lines[idx]) > 0:
+                            frame = self._add_layer(frame, self.lines[idx])
 
         frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
-        cv2.imshow("preview", frame_downscaled)
+        cv2.imshow("Camera Dewarping", frame_downscaled)
         if self.wait > 0:
             self.wait -= 1
         else:
-            cv2.setTrackbarPos("frames", "preview", self.current_frame)
+            cv2.setTrackbarPos("frames", "Camera Dewarping", self.current_frame)
             self.wait = self.precision
 
     def pre_warp_show(self, frame):
@@ -146,31 +150,8 @@ class Dewarping:
             frame = self._apply_warp(frame)
         else:
             frame = background
-        frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
-        cv2.imshow("selected area", frame_downscaled)
-        return frame
-
-    def post_warp_show(self, frame):
-        background = np.zeros_like(frame)
-        hulls = []
-        for idx in range(self.group + 1):
-            temp_background = np.zeros_like(frame)
-            if len(self.target_points) >= 3:
-                # get convex hull and apply mask (frame = cv2.bitwise_and(frame, background, mask=background))
-                # Consider only old points which are the ones fixed before pressing Enter
-                hull = cv2.convexHull(np.array(self.old_points))
-                cv2.fillConvexPoly(temp_background, hull, (255, 255, 255))
-                # frame = cv2.bitwise_and(frame, background)
-                hulls.append(temp_background)
-            else:
-                frame = background
-
-        for hull in hulls:
-            background = cv2.bitwise_or(background, hull)
-
-        frame = cv2.bitwise_and(frame, background)
-        frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
-        cv2.imshow("post warped", frame_downscaled)
+        # frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
+        # cv2.imshow("selected area", frame_downscaled)
         return frame
 
     def _select_point(self, x, y, warp=False):
@@ -386,6 +367,12 @@ class Dewarping:
             self.circles.append([])
             self.lines.append([])
 
+        if key == KeyCodes.DRAW:
+            self.draw = not self.draw
+
+        if key == KeyCodes.VISIBILITY:
+            self.visibility = not self.visibility
+
         return True
 
     def save(self):
@@ -588,15 +575,14 @@ class Dewarping:
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame * self.precision)
 
     def render(self):
-        cv2.namedWindow("preview")
-        cv2.namedWindow("selected area")
-        # cv2.namedWindow("post warped")
+        cv2.namedWindow("Camera Dewarping")
+        # cv2.namedWindow("selected area")
 
         self.cap = cv2.VideoCapture(self.video)
         self.frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT) // self.precision)
         cv2.createTrackbar(
             "frames",
-            "preview",
+            "Camera Dewarping",
             0,
             int(self.frames),
             lambda x: self.set_frame(x),
@@ -613,20 +599,19 @@ class Dewarping:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
 
-            cv2.setMouseCallback("preview", self.on_mouse)
+            cv2.setMouseCallback("Camera Dewarping", self.on_mouse)
             frame = self.crop(frame)
             self.get_triangles(frame)
             area = self.pre_warp_show(frame)
-            # area = self.post_warp_show(frame)
 
-            # create mask from area, where it is 0 set it to 255, else 0
-            mask = np.zeros_like(area)
-            mask[np.where(area == 0)] = 255
-            mask[np.where(area != 0)] = 0
-            # frame = np.hstack([frame, mask, area])
-            # apply mask to frame
-            frame = cv2.bitwise_and(frame, mask)
-            frame = cv2.bitwise_or(frame, area)
+            if self.visibility:
+                # create mask from area, where it is 0 set it to 255, else 0
+                mask = np.zeros_like(area)
+                mask[np.where(area == 0)] = 255
+                mask[np.where(area != 0)] = 0
+                # apply mask to frame
+                frame = cv2.bitwise_and(frame, mask)
+                frame = cv2.bitwise_or(frame, area)
 
             self.show(frame)
 
