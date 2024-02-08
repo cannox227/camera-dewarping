@@ -649,8 +649,6 @@ class Dewarping:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
 
-            frame = frame[:, 1400:2600]
-
             cv2.setMouseCallback("Camera Dewarping", self.on_mouse)
             self.get_triangles(frame)
             area = self.pre_warp_show(frame)
@@ -686,11 +684,11 @@ def main(file, load, scale):
     """\b
     Dewarping tool for cameras
     Keybindings:
-        - q: exit                               - s: save configuration
-        - c: cancel selected point              - r: release point selection (deselect)
-        - p: pop the last point                 - l: load saved data
-        - g: create a new group of points       - v: toggle visibility of the warped area
-        - Enter: advance to the next state      - d: toggle drawing of points and triangles
+        - q: exit                       - g: create a new group of points 
+        - c: cancel selected point      - r: release point selection (deselect)
+        - p: pop the last point         - Enter: advance to the next state
+        - s: save configuration         - v: toggle visibility of the warped area
+        - l: load saved data            - d: toggle drawing of points and triangles
     """
     a = Dewarping(file, load, scale)
     a.render()

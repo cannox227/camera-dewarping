@@ -11,9 +11,9 @@ This project involves the development of a Python application using the OpenCV l
 
 ## Install and Run
 ### Requirements
-- [Poetry](https://python-poetry.org/docs/basic-usage/) as package manager.
-- [Python &ge; 3.10](https://www.python.org) 
-- [Git LFS](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage) to store and download the video/assets used
+- [**Poetry**](https://python-poetry.org/docs/basic-usage/) as package manager.
+- [**Python** &ge; 3.10](https://www.python.org) 
+- [**Git LFS**](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage) to store and download the video/assets used
 
 ### Installation
 0. Install manually the requirements
@@ -25,7 +25,7 @@ git clone https://github.com/cannox227/camera-dewarping
 ```
 cd camera-dewarping
 ```
-3. Download assets (optional)
+3. Download assets *(optional)*
 ```
 git lfs pull
 ```
@@ -47,7 +47,7 @@ poetry shell
   dewarp <file-name> --load 
   ```
 ### Run the tool
-Here below are reported all the possible flags and keybinding that can be used in the tool
+Here below are reported all the possible **flags** and **keybinding** that can be used in the tool
 ```
 Usage: dewarp [OPTIONS] FILE
 
@@ -70,7 +70,7 @@ Options:
 </div>
 
 #### Triangle definition and warping
-When interacting with the video source it is possible to define three or more points from which one or more triangle will be defined using the [Delaunay trianglulation](https://en.wikipedia.org/wiki/Delaunay_triangulation) technique. 
+When interacting with the video source it is possible to define **three or more** points from which one or more triangle will be defined using the [Delaunay trianglulation](https://en.wikipedia.org/wiki/Delaunay_triangulation) technique. 
 After having defined the triangles (with blue lines), by pressing `Enter` key we can start moving the triangles to the new positions.
 In this phase we can move the triangleses (with gray lines), then when we are happy with the configuration we can press again `Enter` and effectively apply the warping.
 
@@ -110,4 +110,4 @@ Another proposed feature involves deleting a specific point by selecting it and 
 
 
 #### Saving the transformation
-After having defined the new triangles and having applied the warping, it is possible to store the information regarding each group of old and new triangles and the correspective transformation matrix. This can be achieved by pressing the key `s`. The files are stored as Numpy array in the `output` folder in `.pkl` [format](https://numpy.org/devdocs/reference/generated/numpy.lib.format.html)
+After having defined the new triangles and having applied the warping, it is possible to store the information regarding each group of old and new triangles and the correspective transformation matrix. This can be achieved by pressing the key `s`. The files are stored as **pickle objects** in the `output` folder in `.pkl` [format](https://docs.python.org/3/library/pickle.html)
