@@ -110,4 +110,4 @@ Another proposed feature involves deleting a specific point by selecting it and 
 
 
 #### Saving the transformation
-After having defined the new triangles and having applied the warping, it is possible to store the information regarding each group of old and new triangles and the correspective transformation matrix. This can be achieved by pressing the key `s`. The files are stored as Numpy array in the `output` folder in `.npy` [format](https://numpy.org/devdocs/reference/generated/numpy.lib.format.html)
+After having defined the new triangles and having applied the warping, it is possible to store the information regarding each group of old and new triangles and the correspective transformation matrix. This can be achieved by pressing the key `s`. The files are stored as Numpy array in the `output` folder in `.pkl` [format](https://numpy.org/devdocs/reference/generated/numpy.lib.format.html)
