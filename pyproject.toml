@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "camera-dewarping"
-version = "0.1.0"
-description = ""
-authors = ["Mattia2700 <mattia2700franzin+dev@gmail.com>"]
+version = "0.9"
+description = "Dewarping tool for cameras"
+authors = ["Mattia2700 <mattia2700franzin+dev@gmail.com>", "cannox227 <tommaso.canova00@gmail.com>"]
 readme = "README.md"
 packages = [{include = "camera_dewarping"}]
 
@@ -14,9 +14,7 @@ click = "^8.1.7"
 
 
 [tool.poetry.group.dev.dependencies]
-setuptools = "^68.2.2"
 black = "^23.12.1"
-auto-profiler = "^2.0"
 
 [build-system]
 requires = ["poetry-core"]

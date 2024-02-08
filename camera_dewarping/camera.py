@@ -1,6 +1,7 @@
 import os
 from copy import deepcopy
 from itertools import combinations
+import pickle
 
 import click
 import cv2
@@ -15,7 +16,7 @@ class KeyCodes:
     ENTER = 13
     RELEASE = ord("r")
     POP = ord("p")
-    DBG_WARP_TOGGLE = ord("m")
+    # DBG_WARP_TOGGLE = ord("m")
     LOAD = ord("l")
     VISIBILITY = ord("v")
     GROUP = ord("g")
@@ -57,6 +58,7 @@ class Dewarping:
         self.group = 0
         self.draw = True
         self.visibility = True
+        self.moved = False
         if load:
             if not self.load():
                 print("No saved data found, skipping")
@@ -65,6 +67,7 @@ class Dewarping:
         self.state = self.next_state
 
     def update_point(self, p, offset_x, offset_y, warp=False):
+        self.moved = True
         for idx in range(self.group + 1):
             points = self.old_points[idx] if not warp else self.points[idx]
             triangles = self.old_triangles[idx] if not warp else self.triangles[idx]
@@ -95,24 +98,23 @@ class Dewarping:
 
     def show(self, frame):
         # Show both old triangle and new triangle (to be warped)
-        if self.state != State.LOAD:
-            for idx in range(self.group + 1):
-                if self.draw:
-                    self.draw_circles(frame, warp=False)
-                    self.draw_lines(frame, warp=False)
-                    if len(self.old_circles[idx]) > 0:
-                        frame = self._add_layer(frame, self.old_circles[idx])
-                    if len(self.old_lines[idx]) > 0:
-                        frame = self._add_layer(frame, self.old_lines[idx])
+        for idx in range(self.group + 1):
+            if self.draw:
+                self.draw_circles(frame, warp=False)
+                self.draw_lines(frame, warp=False)
+                if len(self.old_circles[idx]) > 0:
+                    frame = self._add_layer(frame, self.old_circles[idx])
+                if len(self.old_lines[idx]) > 0:
+                    frame = self._add_layer(frame, self.old_lines[idx])
 
-                    # Show warped triangle
-                    if self.warping:
-                        self.draw_circles(frame, warp=True)
-                        self.draw_lines(frame, warp=self.warping)
-                        if len(self.circles[idx]) > 0:
-                            frame = self._add_layer(frame, self.circles[idx])
-                        if len(self.lines[idx]) > 0:
-                            frame = self._add_layer(frame, self.lines[idx])
+                # Show warped triangle
+                if self.warping:
+                    self.draw_circles(frame, warp=True)
+                    self.draw_lines(frame, warp=self.warping)
+                    if len(self.circles[idx]) > 0:
+                        frame = self._add_layer(frame, self.circles[idx])
+                    if len(self.lines[idx]) > 0:
+                        frame = self._add_layer(frame, self.lines[idx])
 
         frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
         cv2.imshow("Camera Dewarping", frame_downscaled)
@@ -253,7 +255,6 @@ class Dewarping:
                     (frame.shape[0], frame.shape[1], 4), dtype=np.uint8
                 )
                 triangles = self.old_triangles[idx] if not warp else self.triangles[idx]
-                print(triangles)
                 for triangle in triangles:  # self.old_triangles:
                     if warp:
                         cv2.polylines(
@@ -346,8 +347,8 @@ class Dewarping:
                 self.next_state = State.WARPING_APPLY
                 print("Warping applied!")
 
-        if key == KeyCodes.DBG_WARP_TOGGLE:
-            self.warping = not self.warping
+        # if key == KeyCodes.DBG_WARP_TOGGLE:
+        #     self.warping = not self.warping
 
         if key == KeyCodes.SAVE:
             self.save()
@@ -389,23 +390,32 @@ class Dewarping:
         if not os.path.exists(f"output/{name}"):
             os.makedirs(f"output/{name}")
 
-        np.save(
-            f"output/{name}/group.npy",
+        pickle.dump(
             self.group,
+            open(f"output/{name}/group.pkl", "wb"),
         )
         for idx in range(self.group + 1):
-            np.save(
-                f"output/{name}/old_triangles_{idx}.npy",
+            pickle.dump(
                 self.old_triangles[idx],
+                open(f"output/{name}/old_triangles_{idx}.pkl", "wb"),
             )
-            np.save(
-                f"output/{name}/triangles_{idx}.npy",
+            pickle.dump(
                 self.triangles[idx],
+                open(f"output/{name}/triangles_{idx}.pkl", "wb"),
             )
-            np.save(
-                f"output/{name}/trans_matrix_{idx}.npy",
+            pickle.dump(
                 self.transform_matrix[idx],
+                open(f"output/{name}/trans_matrix_{idx}.pkl", "wb"),
             )
+            pickle.dump(
+                self.old_points[idx],
+                open(f"output/{name}/old_points_{idx}.pkl", "wb"),
+            )
+            pickle.dump(
+                self.points[idx],
+                open(f"output/{name}/points_{idx}.pkl", "wb"),
+            )
+
         print("Saved!")
 
     def load(self):
@@ -415,25 +425,37 @@ class Dewarping:
         if not os.path.exists(f"output/{name}"):
             return False
 
-        self.group = np.load(f"output/{name}/group.npy")
+        self.group = pickle.load(open(f"output/{name}/group.pkl", "rb"))
 
-        self.old_triangles = [[] for _ in range(self.group + 1)]
-        self.triangles = [[] for _ in range(self.group + 1)]
-        self.transform_matrix = [[] for _ in range(self.group + 1)]
-        self.old_points = [[] for _ in range(self.group + 1)]
-        self.points = [[] for _ in range(self.group + 1)]
-        self.old_circles = [[] for _ in range(self.group + 1)]
-        self.old_lines = [[] for _ in range(self.group + 1)]
-        self.circles = [[] for _ in range(self.group + 1)]
-        self.lines = [[] for _ in range(self.group + 1)]
+        self.old_triangles = [[] for _ in range(self.group + 2)]
+        self.triangles = [[] for _ in range(self.group + 2)]
+        self.transform_matrix = [[] for _ in range(self.group + 2)]
+        self.old_points = [[] for _ in range(self.group + 2)]
+        self.points = [[] for _ in range(self.group + 2)]
+        self.old_circles = [[] for _ in range(self.group + 2)]
+        self.old_lines = [[] for _ in range(self.group + 2)]
+        self.circles = [[] for _ in range(self.group + 2)]
+        self.lines = [[] for _ in range(self.group + 2)]
 
         for idx in range(self.group + 1):
-            self.old_triangles[idx] = np.load(f"output/{name}/old_triangles_{idx}.npy")
-            self.triangles[idx] = np.load(f"output/{name}/triangles_{idx}.npy")
-            # load np.array of lists
-            self.transform_matrix[idx] = np.load(
-                f"output/{name}/trans_matrix_{idx}.npy"
+            self.old_triangles[idx] = pickle.load(
+                open(f"output/{name}/old_triangles_{idx}.pkl", "rb")
             )
+            self.triangles[idx] = pickle.load(
+                open(f"output/{name}/triangles_{idx}.pkl", "rb")
+            )
+            self.transform_matrix[idx] = pickle.load(
+                open(f"output/{name}/trans_matrix_{idx}.pkl", "rb")
+            )
+            self.old_points[idx] = pickle.load(
+                open(f"output/{name}/old_points_{idx}.pkl", "rb")
+            )
+            self.points[idx] = pickle.load(
+                open(f"output/{name}/points_{idx}.pkl", "rb")
+            )
+
+        self.group += 1
+        self.warping = True
 
         self.next_state = State.LOAD
         self.update_state()
@@ -517,7 +539,7 @@ class Dewarping:
         bg = np.zeros_like(frame)
         bgs = []
         for idx in range(self.group + 1):
-            if self.state != State.LOAD:
+            if self.state != State.LOAD or self.moved:
                 self.transform_matrix[idx].clear()
 
             for iteration, (old_triangles, triangles) in enumerate(
@@ -545,7 +567,7 @@ class Dewarping:
                     tri1Cropped.append(((tri1[i][0] - r1[0]), (tri1[i][1] - r1[1])))
                     tri2Cropped.append(((tri2[i][0] - r2[0]), (tri2[i][1] - r2[1])))
 
-                if self.state == State.LOAD:
+                if self.state == State.LOAD and not self.moved:
                     warpMat = self.transform_matrix[idx][iteration]
                 else:
                     # The getAffineTransform function of OpenCV [2 ] is employed to obtain the transformation matrix
@@ -647,13 +669,17 @@ class Dewarping:
     is_flag=True,
     help="Load presaved config (from output folder)",
 )
-@click.option("--scale", default=0.5, help="Window scale wrt. to video size")
+@click.option("--scale", default=0.5, help="Window scale wrt. video size")
 @click.argument("file", type=click.Path(exists=True))
 def main(file, load, scale):
-    """
+    """\b
     Dewarping tool for cameras
-    Press 'q' to exit
-    Press 's' to save
+    Keybindings:
+        - q: exit                               - s: save configuration
+        - c: cancel selected point              - r: release point selection (deselect)
+        - p: pop the last point                 - l: load saved data
+        - g: create a new group of points       - v: toggle visibility of the warped area
+        - Enter: advance to the next state      - d: toggle drawing of points and triangles
     """
     a = Dewarping(file, load, scale)
     a.render()
