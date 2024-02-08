@@ -66,7 +66,7 @@ Options:
 ```
 
 <div style="text-align: center;">
-    <img src="https://github.com/cannox227/camera-dewarping/assets/33253895/dfb76fe4-ef4d-41ca-8ad8-772456dcff12" alt="workflow-warping">
+    <img src="media/workflow-warping.png" alt="workflow-warping">
 </div>
 
 #### Triangle definition and warping
