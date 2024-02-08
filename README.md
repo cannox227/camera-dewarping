@@ -12,7 +12,7 @@ This project involves the development of a Python application using the OpenCV l
 ## Install and Run
 ### Requirements
 - [Poetry](https://python-poetry.org/docs/basic-usage/) as package manager.
-- [Python >= 3.10](https://www.python.org) 
+- [Python &ge; 3.10](https://www.python.org) 
 - [Git LFS](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage) to store and download the video/assets used
 
 ### Installation
