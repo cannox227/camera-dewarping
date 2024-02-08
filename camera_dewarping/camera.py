@@ -216,7 +216,6 @@ class Dewarping:
     def draw_circles(self, frame, warp=False):
         for idx in range(self.group + 1):
             points = self.old_points[idx] if not warp else self.points[idx]
-
             if points != []:
                 if warp:
                     self.circles[idx] = np.zeros(
@@ -328,8 +327,18 @@ class Dewarping:
             if len(self.old_points[idx]) > 0:
                 self.old_points[idx].pop()
                 if len(self.old_points[idx]) == 0:
+                    self.old_points[idx].clear()
+                    self.old_circles[idx] = np.zeros(
+                        (
+                            self.old_circles[idx].shape[0],
+                            self.old_circles[idx].shape[1],
+                            4,
+                        ),
+                        dtype=np.uint8,
+                    )
+
                     self.old_triangles[idx].clear()
-                    self.group -= 1
+                    self.group = self.group - 1 if self.group > 0 else 0
 
         if key == KeyCodes.ENTER:
             # self.warping = True
@@ -639,6 +648,8 @@ class Dewarping:
             if not ret:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
+
+            frame = frame[:, 1400:2600]
 
             cv2.setMouseCallback("Camera Dewarping", self.on_mouse)
             self.get_triangles(frame)
