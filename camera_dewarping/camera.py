@@ -11,12 +11,8 @@ class KeyCodes:
     NONE = 255
     EXIT = ord("q")
     SAVE = ord("s")
-    PLUS = 43
-    MINUS = 45
     CANCEL = ord("c")
-    ESC = 27
     ENTER = 13
-    PAUSE = ord(" ")
     RELEASE = ord("r")
     POP = ord("p")
     DBG_WARP_TOGGLE = ord("m")
@@ -257,6 +253,7 @@ class Dewarping:
                     (frame.shape[0], frame.shape[1], 4), dtype=np.uint8
                 )
                 triangles = self.old_triangles[idx] if not warp else self.triangles[idx]
+                print(triangles)
                 for triangle in triangles:  # self.old_triangles:
                     if warp:
                         cv2.polylines(
@@ -293,6 +290,11 @@ class Dewarping:
                         pt3 = tuple(triangle[4:6])
 
                         triangles.append(np.array([pt1, pt2, pt3]))
+                else:
+                    self.old_triangles[idx].clear()
+                    self.old_lines[idx] = np.zeros(
+                        (frame.shape[0], frame.shape[1], 4), dtype=np.uint8
+                    )
 
             else:
                 if len(points) > 2:
@@ -305,27 +307,28 @@ class Dewarping:
     def on_key(self, key):
         if key == KeyCodes.EXIT:
             return False
-        # elif ord("1") <= key <= ord("3"):
-        #     self.current_source = key - ord("1")
-        #     self.cap = cv2.VideoCapture(self.videos)
 
         if self.selected_point is not None:
             if key == KeyCodes.CANCEL and not self.warping:
                 for idx in range(self.group + 1):
                     if self.selected_point in self.old_points[idx]:
-                        self.old_points.remove(self.selected_point)
+                        self.old_points[idx].remove(self.selected_point)
+                        if len(self.old_points[idx]) == 0:
+                            self.old_triangles[idx].clear()
+                            self.group -= 1
                 # self.points.remove(self.selected_point)
-                self.selected_point = None
-            elif key == KeyCodes.ESC:
                 self.selected_point = None
 
         if key == KeyCodes.RELEASE:
             self.selected_point = None
 
         if key == KeyCodes.POP and not self.warping:
-            for idx in range(self.group + 1):
-                if len(self.old_points[idx]) > 0:
-                    self.old_points.pop()
+            idx = self.group
+            if len(self.old_points[idx]) > 0:
+                self.old_points[idx].pop()
+                if len(self.old_points[idx]) == 0:
+                    self.old_triangles[idx].clear()
+                    self.group -= 1
 
         if key == KeyCodes.ENTER:
             # self.warping = True
@@ -528,9 +531,13 @@ class Dewarping:
 
                 current_bg = np.zeros_like(frame)
 
+                # Two rectangles are defined, each circumscribing the old and new triangles, respectively
+                # Two rectangles are defined, each circumscribing the old and new triangles, respectively
                 r1 = cv2.boundingRect(tri1)
                 r2 = cv2.boundingRect(tri2)
-                mask = np.zeros_like(frame, dtype=np.uint8)
+
+                # The coordinates of both triangles are expressed relative to the coordinates of their respective
+                # rectangles
                 tri1Cropped = []
                 tri2Cropped = []
 
@@ -538,16 +545,21 @@ class Dewarping:
                     tri1Cropped.append(((tri1[i][0] - r1[0]), (tri1[i][1] - r1[1])))
                     tri2Cropped.append(((tri2[i][0] - r2[0]), (tri2[i][1] - r2[1])))
 
-                # Crop input image
-                img1Cropped = frame[r1[1] : r1[1] + r1[3], r1[0] : r1[0] + r1[2]]
                 if self.state == State.LOAD:
                     warpMat = self.transform_matrix[idx][iteration]
                 else:
+                    # The getAffineTransform function of OpenCV [2 ] is employed to obtain the transformation matrix
+                    # between the first and second triangle
                     warpMat = cv2.getAffineTransform(
                         np.float32(tri1Cropped), np.float32(tri2Cropped)
                     )
                     self.transform_matrix[idx].append(warpMat)
 
+                # Crop input image
+                img1Cropped = frame[r1[1] : r1[1] + r1[3], r1[0] : r1[0] + r1[2]]
+
+                # The transformation is then applied to the old rectangle to obtain the second one using the
+                # warpAffine function.
                 img2Cropped = cv2.warpAffine(
                     img1Cropped,
                     warpMat,
@@ -556,6 +568,9 @@ class Dewarping:
                     flags=cv2.INTER_LINEAR,
                     borderMode=cv2.BORDER_REFLECT_101,
                 )
+
+                # A mask, sized according to the destination rectangle, is generated to retain only the pixels
+                # related to the final triangle, setting the rest to zero
                 mask = np.zeros((r2[3], r2[2], 3), dtype=np.float32)
                 cv2.fillConvexPoly(mask, np.int32(tri2Cropped), (1.0, 1.0, 1.0), 16, 0)
 
@@ -566,6 +581,7 @@ class Dewarping:
                     r2[1] : r2[1] + r2[3], r2[0] : r2[0] + r2[2]
                 ] * ((1.0, 1.0, 1.0) - mask)
 
+                # Subsequently, the new triangle is removed from the image and replaced by its warped version
                 current_bg[r2[1] : r2[1] + r2[3], r2[0] : r2[0] + r2[2]] = (
                     bg[r2[1] : r2[1] + r2[3], r2[0] : r2[0] + r2[2]] + img2Cropped
                 )
