@@ -9,6 +9,8 @@ This project involves the development of a Python application using the OpenCV l
   <video src="https://github.com/cannox227/camera-dewarping/assets/33253895/bebb5a97-0931-4b65-b69a-aefee43d86c2" style="width=50%" />
 </div>
 
+The detailed description of the algorithm and workflow used can be found in `report.pdf`
+
 ## Install and Run
 ### Requirements
 - [**Poetry**](https://python-poetry.org/docs/basic-usage/) as package manager.
