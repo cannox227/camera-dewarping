@@ -398,6 +398,10 @@ class Dewarping:
                 self.next_state = State.WARPING_APPLY
                 print("Warping applied!")
 
+            elif self.state == State.REFERENCE:
+                self.next_state = State.TRIANGLE_DEFINITION
+                print("Reference points set")
+
         # if key == KeyCodes.DBG_WARP_TOGGLE:
         #     self.warping = not self.warping
 
@@ -764,8 +768,9 @@ class Dewarping:
                 continue
             cv2.setMouseCallback("Camera Dewarping", self.on_mouse)
 
+            frame = self.draw_reference(frame)
+
             if self.state == State.REFERENCE:
-                frame = self.draw_reference(frame)
                 frame = self.draw_corners(frame)
             else:
                 self.get_triangles(frame)
