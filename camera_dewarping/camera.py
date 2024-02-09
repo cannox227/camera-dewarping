@@ -1,3 +1,4 @@
+from importlib import resources
 import os
 from copy import deepcopy
 from itertools import combinations
@@ -24,10 +25,11 @@ class KeyCodes:
 
 
 class State:
-    TRIANGLE_DEFINITION = 0
-    WARPING_FIX_ANCHORS = 1
-    WARPING_APPLY = 2
-    LOAD = 3
+    REFERENCE = 0
+    TRIANGLE_DEFINITION = 1
+    WARPING_FIX_ANCHORS = 2
+    WARPING_APPLY = 3
+    LOAD = 4
 
 
 class Dewarping:
@@ -48,8 +50,8 @@ class Dewarping:
         self.lines = [[]]
         self.old_circles = [[]]
         self.old_lines = [[]]
-        self.state = State.TRIANGLE_DEFINITION
-        self.next_state = State.TRIANGLE_DEFINITION
+        self.state = State.REFERENCE
+        self.next_state = State.REFERENCE
         self.transform_matrix = [[]]
         self.frames = 0
         self.current_frame = 0
@@ -59,6 +61,21 @@ class Dewarping:
         self.draw = True
         self.visibility = True
         self.moved = False
+        self.corners = []
+        self.old_corners = []
+        with resources.path("camera_dewarping", "reference_black.png") as path:
+            self.old_reference = cv2.imread(str(path))
+            self.old_reference = cv2.cvtColor(self.old_reference, cv2.COLOR_BGR2BGRA)
+            self.old_reference[
+                np.where((self.old_reference == [0, 0, 0, 255]).all(axis=2))
+            ] = [
+                0,
+                0,
+                0,
+                0,
+            ]
+            self.reference = None
+            self.temp = None
         if load:
             if not self.load():
                 print("No saved data found, skipping")
@@ -67,28 +84,38 @@ class Dewarping:
         self.state = self.next_state
 
     def update_point(self, p, offset_x, offset_y, warp=False):
-        self.moved = True
-        for idx in range(self.group + 1):
-            points = self.old_points[idx] if not warp else self.points[idx]
-            triangles = self.old_triangles[idx] if not warp else self.triangles[idx]
+        if self.state != State.REFERENCE:
+            self.moved = True
+            for idx in range(self.group + 1):
+                points = self.old_points[idx] if not warp else self.points[idx]
+                triangles = self.old_triangles[idx] if not warp else self.triangles[idx]
+                new_point = (p[0] + offset_x, p[1] + offset_y)
+
+                index = points.index(p) if p in points else None
+
+                if index is not None:
+                    points[index] = new_point
+
+                for mask in triangles:
+                    for i, point in enumerate(mask):
+                        if point[0] == p[0] and point[1] == p[1]:
+                            mask[i] = new_point
+                self.selected_point = new_point
+        else:
             new_point = (p[0] + offset_x, p[1] + offset_y)
 
-            index = points.index(p) if p in points else None
+            index = self.corners.index(p) if p in self.corners else None
 
             if index is not None:
-                points[index] = new_point
+                self.corners[index] = new_point
 
-            for mask in triangles:
-                for i, point in enumerate(mask):
-                    if point[0] == p[0] and point[1] == p[1]:
-                        mask[i] = new_point
             self.selected_point = new_point
 
     def _add_layer(self, frame, layer):
-        if frame.shape != layer.shape or frame.shape[2] != 4:
+        if frame.shape[2] != 4:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
-            if layer.shape[2] != 4:
-                layer = cv2.cvtColor(layer, cv2.COLOR_BGR2BGRA)
+        if layer.shape[2] != 4:
+            layer = cv2.cvtColor(layer, cv2.COLOR_BGR2BGRA)
 
         mask = 255 - layer[:, :, 3]
         frame = cv2.bitwise_and(frame, frame, mask=mask)
@@ -158,30 +185,45 @@ class Dewarping:
         selected_point = None
         self.btn_down = True
 
-        for idx in range(self.group + 1):
-            points = self.old_points[idx] if not warp else self.points[idx]
+        if self.state != State.REFERENCE:
+            for idx in range(self.group + 1):
+                points = self.old_points[idx] if not warp else self.points[idx]
 
-            # check if x,y is close to any of the points
-            for point in points:
+                # check if x,y is close to any of the points
+                for point in points:
+                    if (
+                        abs(point[0] - x) < self.point_threshold
+                        and abs(point[1] - y) < self.point_threshold
+                    ):
+                        new_point = False
+                        selected_point = point
+                        break
+
+            if not warp:
+                if new_point:
+                    points = (
+                        self.old_points[self.group]
+                        if not warp
+                        else self.points[self.group]
+                    )
+                    points.append((int(x), int(y)))
+                    self.selected_point = points[-1]
+                elif selected_point is not None:
+                    self.selected_point = selected_point
+            else:
+                if selected_point is not None and new_point is False:
+                    self.selected_point = selected_point
+
+        else:
+            for point in self.corners:
                 if (
                     abs(point[0] - x) < self.point_threshold
                     and abs(point[1] - y) < self.point_threshold
                 ):
-                    new_point = False
                     selected_point = point
                     break
 
-        if not warp:
-            if new_point:
-                points = (
-                    self.old_points[self.group] if not warp else self.points[self.group]
-                )
-                points.append((int(x), int(y)))
-                self.selected_point = points[-1]
-            elif selected_point is not None:
-                self.selected_point = selected_point
-        else:
-            if selected_point is not None and new_point is False:
+            if selected_point is not None:
                 self.selected_point = selected_point
 
     def on_mouse(self, event, x, y, flags, data):
@@ -624,6 +666,78 @@ class Dewarping:
     def set_frame(self, frame):
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame * self.precision)
 
+    def draw_corners(self, frame):
+        for corner in self.corners:
+            if corner == self.selected_point:
+                cv2.circle(frame, corner, 15, (255, 0, 255, 255), -1)
+            else:
+                cv2.circle(frame, corner, 15, (0, 255, 255, 255), -1)
+
+        return frame
+
+    def draw_reference(self, frame):
+        # resize self.old_reference to be 70% of the smallest dimension of the frame
+        ref_scale = (
+            min(
+                frame.shape[0],
+                frame.shape[1],
+            )
+            * 0.7
+        )
+
+        # create a transparent background
+        background = np.zeros((frame.shape[0], frame.shape[1], 4), dtype=np.uint8)
+
+        if len(self.old_corners) == 0:
+            old_ref = cv2.resize(self.old_reference, (int(ref_scale), int(ref_scale)))
+
+            # place it in the middle of the frame
+            x_offset = int(frame.shape[1] - old_ref.shape[1]) // 2
+            y_offset = int(frame.shape[0] - old_ref.shape[0]) // 2
+
+            self.old_corners = [
+                (x_offset, y_offset),
+                (x_offset + old_ref.shape[1], y_offset),
+                (x_offset, y_offset + old_ref.shape[0]),
+                (
+                    x_offset + old_ref.shape[1],
+                    y_offset + old_ref.shape[0],
+                ),
+            ]
+            self.corners = self.old_corners.copy()
+
+            background[
+                y_offset : y_offset + old_ref.shape[0],
+                x_offset : x_offset + old_ref.shape[1],
+            ] = old_ref
+
+            self.old_reference = background
+
+        elif self.corners != self.old_corners:
+            transform_matrix = cv2.getPerspectiveTransform(
+                np.float32(self.old_corners), np.float32(self.corners)
+            )
+
+            new_ref = cv2.warpPerspective(
+                self.old_reference, transform_matrix, (frame.shape[1], frame.shape[0])
+            )
+
+            x_offset = int(frame.shape[1] - new_ref.shape[1]) // 2
+            y_offset = int(frame.shape[0] - new_ref.shape[0]) // 2
+
+            background[
+                y_offset : y_offset + new_ref.shape[0],
+                x_offset : x_offset + new_ref.shape[1],
+            ] = new_ref
+
+        else:
+            background = self.old_reference
+
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+        frame = self._add_layer(frame, background)
+
+        return frame
+
     def render(self):
         cv2.namedWindow("Camera Dewarping")
         # cv2.namedWindow("selected area")
@@ -648,19 +762,23 @@ class Dewarping:
             if not ret:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
-
             cv2.setMouseCallback("Camera Dewarping", self.on_mouse)
-            self.get_triangles(frame)
-            area = self.pre_warp_show(frame)
 
-            if self.visibility:
-                # create mask from area, where it is 0 set it to 255, else 0
-                mask = np.zeros_like(area)
-                mask[np.where(area == 0)] = 255
-                mask[np.where(area != 0)] = 0
-                # apply mask to frame
-                frame = cv2.bitwise_and(frame, mask)
-                frame = cv2.bitwise_or(frame, area)
+            if self.state == State.REFERENCE:
+                frame = self.draw_reference(frame)
+                frame = self.draw_corners(frame)
+            else:
+                self.get_triangles(frame)
+                area = self.pre_warp_show(frame)
+
+                if self.visibility:
+                    # create mask from area, where it is 0 set it to 255, else 0
+                    mask = np.zeros_like(area)
+                    mask[np.where(area == 0)] = 255
+                    mask[np.where(area != 0)] = 0
+                    # apply mask to frame
+                    frame = cv2.bitwise_and(frame, mask)
+                    frame = cv2.bitwise_or(frame, area)
 
             self.show(frame)
 
@@ -684,7 +802,7 @@ def main(file, load, scale):
     """\b
     Dewarping tool for cameras
     Keybindings:
-        - q: exit                       - g: create a new group of points 
+        - q: exit                       - g: create a new group of points
         - c: cancel selected point      - r: release point selection (deselect)
         - p: pop the last point         - Enter: advance to the next state
         - s: save configuration         - v: toggle visibility of the warped area
