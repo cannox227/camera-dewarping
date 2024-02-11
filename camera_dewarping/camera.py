@@ -3,6 +3,7 @@ import os
 from copy import deepcopy
 from itertools import combinations
 import pickle
+from math import sqrt
 
 import click
 import cv2
@@ -102,12 +103,33 @@ class Dewarping:
                             mask[i] = new_point
                 self.selected_point = new_point
         else:
-            new_point = (p[0] + offset_x, p[1] + offset_y)
-
             index = self.corners.index(p) if p in self.corners else None
 
-            if index is not None:
-                self.corners[index] = new_point
+            if index == 1 or index == 2:
+                new_point = (p[0] - offset_y, p[1] + offset_y)
+            else:
+                new_point = (p[0] + offset_y, p[1] + offset_y)
+
+            same_x = [
+                point for point in self.corners if point[0] == p[0] and point != p
+            ][0]
+            same_y = [
+                point for point in self.corners if point[1] == p[1] and point != p
+            ][0]
+            index_same_x = (
+                self.corners.index(same_x) if same_x in self.corners else None
+            )
+            index_same_y = (
+                self.corners.index(same_y) if same_y in self.corners else None
+            )
+
+            self.corners[index] = new_point
+
+            if index_same_x is not None:
+                self.corners[index_same_x] = (new_point[0], same_x[1])
+
+            if index_same_y is not None:
+                self.corners[index_same_y] = (same_y[0], new_point[1])
 
             self.selected_point = new_point
 
@@ -215,6 +237,7 @@ class Dewarping:
                     self.selected_point = selected_point
 
         else:
+            self.selected_point = None
             for point in self.corners:
                 if (
                     abs(point[0] - x) < self.point_threshold
@@ -234,13 +257,13 @@ class Dewarping:
             if event == cv2.EVENT_LBUTTONDOWN:
                 self._select_point(x, y)
 
-            elif event == cv2.EVENT_MOUSEMOVE and self.btn_down:
+            if event == cv2.EVENT_MOUSEMOVE and self.btn_down and self.selected_point:
                 offset_x = int(x) - self.selected_point[0]
                 offset_y = int(y) - self.selected_point[1]
 
                 self.update_point(self.selected_point, offset_x, offset_y)
 
-            elif event == cv2.EVENT_LBUTTONUP and self.btn_down:
+            if event == cv2.EVENT_LBUTTONUP and self.btn_down:
                 self.btn_down = False
         else:
             if event == cv2.EVENT_LBUTTONDOWN:
@@ -672,6 +695,7 @@ class Dewarping:
 
     def draw_corners(self, frame):
         for corner in self.corners:
+            corner = (int(corner[0]), int(corner[1]))
             if corner == self.selected_point:
                 cv2.circle(frame, corner, 15, (255, 0, 255, 255), -1)
             else:
