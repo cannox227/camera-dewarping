@@ -23,6 +23,10 @@ class KeyCodes:
     VISIBILITY = ord("v")
     GROUP = ord("g")
     DRAW = ord("d")
+    UP = 82
+    DOWN = 84
+    LEFT = 81
+    RIGHT = 83
 
 
 class State:
@@ -173,7 +177,7 @@ class Dewarping:
             cv2.setTrackbarPos("frames", "Camera Dewarping", self.current_frame)
             self.wait = self.precision
 
-    def pre_warp_show(self, frame):
+    def pre_warp_show(self, frame_backup, frame):
         background = np.zeros_like(frame)
         if self.state == State.WARPING_FIX_ANCHORS:
             hulls = []
@@ -195,7 +199,7 @@ class Dewarping:
             frame = cv2.bitwise_and(frame, background)
 
         elif self.state == State.WARPING_APPLY or self.state == State.LOAD:
-            frame = self._apply_warp(frame)
+            frame = self._apply_warp(frame_backup)
         else:
             frame = background
         # frame_downscaled = cv2.resize(frame, (0, 0), fx=self.scale, fy=self.scale)
@@ -454,6 +458,16 @@ class Dewarping:
 
         if key == KeyCodes.VISIBILITY:
             self.visibility = not self.visibility
+
+        if self.state == State.REFERENCE:
+            if key == KeyCodes.UP:
+                self.corners = [(point[0], point[1] - 1) for point in self.corners]
+            elif key == KeyCodes.DOWN:
+                self.corners = [(point[0], point[1] + 1) for point in self.corners]
+            elif key == KeyCodes.LEFT:
+                self.corners = [(point[0] - 1, point[1]) for point in self.corners]
+            elif key == KeyCodes.RIGHT:
+                self.corners = [(point[0] + 1, point[1]) for point in self.corners]
 
         return True
 
@@ -792,13 +806,14 @@ class Dewarping:
                 continue
             cv2.setMouseCallback("Camera Dewarping", self.on_mouse)
 
+            frame_backup = frame.copy()
             frame = self.draw_reference(frame)
 
             if self.state == State.REFERENCE:
                 frame = self.draw_corners(frame)
             else:
                 self.get_triangles(frame)
-                area = self.pre_warp_show(frame)
+                area = self.pre_warp_show(frame_backup, frame)
 
                 if self.visibility:
                     # create mask from area, where it is 0 set it to 255, else 0
