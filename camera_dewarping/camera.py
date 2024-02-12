@@ -1,9 +1,8 @@
-from importlib import resources
 import os
-from copy import deepcopy
-from itertools import combinations
 import pickle
-from math import sqrt
+from copy import deepcopy
+from importlib import resources
+from itertools import combinations
 
 import click
 import cv2
@@ -17,6 +16,7 @@ class KeyCodes:
     CANCEL = ord("c")
     ENTER = 13
     RELEASE = ord("r")
+    TRACE = ord("t")
     POP = ord("p")
     # DBG_WARP_TOGGLE = ord("m")
     LOAD = ord("l")
@@ -68,11 +68,12 @@ class Dewarping:
         self.moved = False
         self.corners = []
         self.old_corners = []
-        with resources.path("camera_dewarping", "reference_black.png") as path:
+        self.view_reference = True
+        with resources.path("camera_dewarping", "ref.png") as path:
             self.old_reference = cv2.imread(str(path))
             self.old_reference = cv2.cvtColor(self.old_reference, cv2.COLOR_BGR2BGRA)
             self.old_reference[
-                np.where((self.old_reference == [0, 0, 0, 255]).all(axis=2))
+                np.where((self.old_reference == [255, 255, 255, 255]).all(axis=2))
             ] = [
                 0,
                 0,
@@ -261,13 +262,13 @@ class Dewarping:
             if event == cv2.EVENT_LBUTTONDOWN:
                 self._select_point(x, y)
 
-            if event == cv2.EVENT_MOUSEMOVE and self.btn_down and self.selected_point:
+            elif event == cv2.EVENT_MOUSEMOVE and self.btn_down:
                 offset_x = int(x) - self.selected_point[0]
                 offset_y = int(y) - self.selected_point[1]
 
                 self.update_point(self.selected_point, offset_x, offset_y)
 
-            if event == cv2.EVENT_LBUTTONUP and self.btn_down:
+            elif event == cv2.EVENT_LBUTTONUP and self.btn_down:
                 self.btn_down = False
         else:
             if event == cv2.EVENT_LBUTTONDOWN:
@@ -461,13 +462,16 @@ class Dewarping:
 
         if self.state == State.REFERENCE:
             if key == KeyCodes.UP:
-                self.corners = [(point[0], point[1] - 1) for point in self.corners]
+                self.corners = [(point[0], point[1] - 10) for point in self.corners]
             elif key == KeyCodes.DOWN:
-                self.corners = [(point[0], point[1] + 1) for point in self.corners]
+                self.corners = [(point[0], point[1] + 10) for point in self.corners]
             elif key == KeyCodes.LEFT:
-                self.corners = [(point[0] - 1, point[1]) for point in self.corners]
+                self.corners = [(point[0] - 10, point[1]) for point in self.corners]
             elif key == KeyCodes.RIGHT:
-                self.corners = [(point[0] + 1, point[1]) for point in self.corners]
+                self.corners = [(point[0] + 10, point[1]) for point in self.corners]
+
+        if key == KeyCodes.TRACE:
+            self.view_reference = not self.view_reference
 
         return True
 
@@ -807,9 +811,11 @@ class Dewarping:
             cv2.setMouseCallback("Camera Dewarping", self.on_mouse)
 
             frame_backup = frame.copy()
-            frame = self.draw_reference(frame)
 
-            if self.state == State.REFERENCE:
+            if self.view_reference:
+                frame = self.draw_reference(frame)
+
+            if self.state == State.REFERENCE and self.view_reference:
                 frame = self.draw_corners(frame)
             else:
                 self.get_triangles(frame)
@@ -846,11 +852,12 @@ def main(file, load, scale):
     """\b
     Dewarping tool for cameras
     Keybindings:
-        - q: exit                       - g: create a new group of points
-        - c: cancel selected point      - r: release point selection (deselect)
-        - p: pop the last point         - Enter: advance to the next state
-        - s: save configuration         - v: toggle visibility of the warped area
-        - l: load saved data            - d: toggle drawing of points and triangles
+        - q: exit                        - g: create a new group of points
+        - c: cancel selected point       - r: release point selection (deselect)
+        - p: pop the last point          - Enter: advance to the next state
+        - s: save configuration          - v: toggle visibility of the warped area
+        - l: load saved data             - d: toggle drawing of points and triangles
+        - wasd: move reference around    - t: toggle reference visibility
     """
     a = Dewarping(file, load, scale)
     a.render()
