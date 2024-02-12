@@ -852,12 +852,12 @@ def main(file, load, scale):
     """\b
     Dewarping tool for cameras
     Keybindings:
-        - q: exit                        - g: create a new group of points
-        - c: cancel selected point       - r: release point selection (deselect)
-        - p: pop the last point          - Enter: advance to the next state
-        - s: save configuration          - v: toggle visibility of the warped area
-        - l: load saved data             - d: toggle drawing of points and triangles
-        - wasd: move reference around    - t: toggle reference visibility
+        - q: exit                       - g: create a new group of points
+        - c: cancel selected point      - r: release point selection (deselect)
+        - p: pop the last point         - Enter: advance to the next state
+        - s: save configuration         - v: toggle visibility of the warped area
+        - l: load saved data            - d: toggle drawing of points and triangles
+        - wasd: move                    - t: toggle reference visibility
     """
     a = Dewarping(file, load, scale)
     a.render()
