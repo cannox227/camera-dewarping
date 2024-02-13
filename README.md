@@ -60,7 +60,7 @@ Usage: dewarp [OPTIONS] FILE
       - p: pop the last point                 - l: load saved data
       - g: create a new group of points       - v: toggle visibility of the warped area
       - Enter: advance to the next state      - d: toggle drawing of points and triangles
-      - wasd: move reference                  - t: toggle reference visibility
+      - Arrows: move reference                  - t: toggle reference visibility
 
 Options:
   --load         Load presaved config (from output folder)

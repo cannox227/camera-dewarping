@@ -857,7 +857,7 @@ def main(file, load, scale):
         - p: pop the last point         - Enter: advance to the next state
         - s: save configuration         - v: toggle visibility of the warped area
         - l: load saved data            - d: toggle drawing of points and triangles
-        - wasd: move                    - t: toggle reference visibility
+        - Arrows: move reference        - t: toggle reference visibility
     """
     a = Dewarping(file, load, scale)
     a.render()
